@@ -717,7 +717,8 @@ static inline void cgroup_account_cputime(struct task_struct *task,
 {
 	struct cgroup *cgrp;
 
-	cpuacct_charge(task, delta_exec);
+	if (cgroup_subsys_enabled(cpuacct_cgrp_subsys))
+		cpuacct_charge(task, delta_exec);
 
 	cgrp = task_dfl_cgroup(task);
 	if (cgroup_parent(cgrp))
@@ -730,7 +731,8 @@ static inline void cgroup_account_cputime_field(struct task_struct *task,
 {
 	struct cgroup *cgrp;
 
-	cpuacct_account_field(task, index, delta_exec);
+	if (cgroup_subsys_enabled(cpuacct_cgrp_subsys))
+		cpuacct_account_field(task, index, delta_exec);
 
 	cgrp = task_dfl_cgroup(task);
 	if (cgroup_parent(cgrp))
