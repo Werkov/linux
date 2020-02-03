@@ -239,6 +239,33 @@ static void pids_cancel_attach(struct cgroup_taskset *tset)
 	}
 }
 
+static void pids_event(struct pids_cgroup *pids_forking,
+		       struct pids_cgroup *pids_over_limit)
+{
+	struct pids_cgroup *p;
+	bool limit = false;
+
+	for (p = pids_forking; parent_pids(p); p = parent_pids(p)) {
+		/* Only log the first time events_limit_imposed is incremented. */
+		if (atomic64_inc_return(&p->events_limit_imposed) == 1 &&
+		    p == pids_forking) {
+			pr_info("cgroup: fork rejected by pids controller in ");
+			pr_cont_cgroup_path(p->css.cgroup);
+			pr_cont("\n");
+		}
+
+		if (p == pids_over_limit)
+			limit = true;
+		if (limit)
+			atomic64_inc(&p->events_limit);
+
+		cgroup_file_notify(&p->events_file);
+		/* Events are only notified in pids_forking on v1 */
+		if (!cgroup_subsys_on_dfl(pids_cgrp_subsys))
+			break;
+	}
+}
+
 /*
  * task_css_check(true) in pids_can_fork() and pids_cancel_fork() relies
  * on cgroup_threadgroup_change_begin() held by the copy_process().
@@ -256,22 +283,7 @@ static int pids_can_fork(struct task_struct *task, struct css_set *cset)
 	pids = css_pids(css);
 	err = pids_try_charge(pids, 1, &pids_over_limit);
 	if (err) {
-		/* Backwards compatibility on v1 where events were notified in
-		 * leaves. */
-		if (!cgroup_subsys_on_dfl(pids_cgrp_subsys))
-			pids_over_limit = pids;
-
-		/* Only log the first time events_limit_imposed is incremented. */
-		if (atomic64_inc_return(&pids->events_limit_imposed) == 1) {
-			pr_info("cgroup: fork rejected by pids controller in ");
-			pr_cont_cgroup_path(pids->css.cgroup);
-			pr_cont("\n");
-		}
-		atomic64_inc(&pids_over_limit->events_limit);
-
-		cgroup_file_notify(&pids->events_file);
-		if (pids_over_limit != pids)
-			cgroup_file_notify(&pids_over_limit->events_file);
+		pids_event(pids, pids_over_limit);
 	}
 	return err;
 }
