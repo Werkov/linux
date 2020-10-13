@@ -2635,6 +2635,8 @@ static int do_sysinfo(struct sysinfo *info)
 	unsigned long mem_total, sav_total;
 	unsigned int mem_unit, bitcount;
 	struct timespec64 tp;
+	struct mem_cgroup *orig_memcg, *memcg;
+	unsigned long totalram = PAGE_COUNTER_MAX;
 
 	memset(info, 0, sizeof(struct sysinfo));
 
@@ -2672,6 +2674,52 @@ static int do_sysinfo(struct sysinfo *info)
 			goto out;
 	}
 
+	orig_memcg = get_mem_cgroup_from_mm(current->mm);
+	memcg = orig_memcg;
+	for (;;) {
+		unsigned long max;
+		if (!memcg) {
+			pr_debug("%s:%d break\n", __func__, __LINE__);
+			break;
+		}
+		pr_debug("%s:%d memcg at %p\n", __func__, __LINE__, orig_memcg);
+		if (memcg == root_mem_cgroup) {
+			pr_debug("%s:%d break\n", __func__, __LINE__);
+			break;
+		}
+		max = (u64)READ_ONCE(memcg->memory.max);
+		pr_debug("%s:%d memcg max %lu\n", __func__, __LINE__, max);
+		if (max < PAGE_COUNTER_MAX) {
+			totalram = max;
+			pr_debug("%s:%d break\n", __func__, __LINE__);
+			break;
+		}
+		if (parent_mem_cgroup(memcg) == root_mem_cgroup) {
+			pr_debug("%s:%d break\n", __func__, __LINE__);
+			break;
+		}
+		memcg = parent_mem_cgroup(memcg);
+	}
+	if (totalram < PAGE_COUNTER_MAX) {
+		unsigned long memsw = PAGE_COUNTER_MAX;
+		unsigned long memsw_usage = 0;
+		unsigned long memusage = page_counter_read(&memcg->memory);
+
+		if (!cgroup_memory_noswap) {
+			memsw = READ_ONCE(memcg->memsw.max);
+			memsw_usage = page_counter_read(&memcg->memsw);
+		}
+
+		info->totalram = info->totalhigh = totalram;
+		info->freeram = info->freehigh = totalram - memusage;
+		if (memsw < PAGE_COUNTER_MAX) {
+			info->totalswap = memsw - totalram;
+			info->freeswap = info->totalswap - (memsw_usage - memusage);
+		}
+		info->bufferram = memcg_page_state(memcg, NR_FILE_PAGES) / PAGE_SIZE;
+		info->sharedram = memcg_page_state(memcg, NR_SHMEM) / PAGE_SIZE;
+	}
+	mem_cgroup_put(orig_memcg);
 	/*
 	 * If mem_total did not overflow, multiply all memory values by
 	 * info->mem_unit and set it to 1.  This leaves things compatible
