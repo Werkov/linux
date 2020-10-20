@@ -104,9 +104,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 			sunreclaim = 0;
 		}
 		cached = memcg_page_state(memcg, NR_FILE_PAGES);
+		/* This is conservative, ignore page-cache */
 		available = i.freeram + sreclaimable;
 		committed = 0;
-		i.bufferram = sreclaimable;
+		/* No tracked in memcg, so pretend no buffers */
+		i.bufferram = 0;
 		i.sharedram = memcg_page_state(memcg, NR_SHMEM);
 	} else {
 		for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)

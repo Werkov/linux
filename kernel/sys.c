@@ -2716,7 +2716,7 @@ static int do_sysinfo(struct sysinfo *info)
 			info->totalswap = memsw - totalram;
 			info->freeswap = info->totalswap - (memsw_usage - memusage);
 		}
-		info->bufferram = memcg_page_state(memcg, NR_FILE_PAGES);
+		info->bufferram = 0;
 		info->sharedram = memcg_page_state(memcg, NR_SHMEM);
 	}
 	mem_cgroup_put(orig_memcg);
