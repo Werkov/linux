@@ -32,7 +32,7 @@ static void show_val_kb(struct seq_file *m, const char *s, unsigned long num)
 #define virtual_zone_page_state(x) (totalram == PAGE_COUNTER_MAX) ? \
 					global_zone_page_state(x) : 0
 #define virtual_node_page_state(x) (totalram == PAGE_COUNTER_MAX) ? \
-					global_zone_page_state(x) : \
+					global_node_page_state(x) : \
 					memcg_page_state(memcg, x)
 static int meminfo_proc_show(struct seq_file *m, void *v)
 {
