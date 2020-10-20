@@ -103,11 +103,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 			sreclaimable = 0;
 			sunreclaim = 0;
 		}
-		cached = memcg_page_state(memcg, NR_FILE_PAGES) / PAGE_SIZE;
+		cached = memcg_page_state(memcg, NR_FILE_PAGES);
 		available = i.freeram + sreclaimable;
 		committed = 0;
 		i.bufferram = sreclaimable;
-		i.sharedram = memcg_page_state(memcg, NR_SHMEM) / PAGE_SIZE;
+		i.sharedram = memcg_page_state(memcg, NR_SHMEM);
 	} else {
 		for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
 			pages[lru] = global_node_page_state(NR_LRU_BASE + lru);
