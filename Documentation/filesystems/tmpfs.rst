@@ -208,6 +208,22 @@ mount options.  It can be added later, when the tmpfs is already mounted
 on MountPoint, by 'mount -o remount,mpol=Policy:NodeList MountPoint'.
 
 
+If CONFIG_MEMCG is enabled, tmpfs has a mount option to disable charging of
+page allocations to memory cgroups.
+
+=======  =====================================================================
+nomemcg  Disables memcg charging. Remounts must respect the original settings.
+         By default charging is enabled.
+=======  =====================================================================
+
+Once a mount point is created with nomemcg, any process that has write access to
+this mount point is able to use this mount point and bypass its memory cgroup's limits. 
+Thus, it is important to limit write access to the mount point
+to the intended users if untrusted code is running on the machine or utilize quotas.
+This is generally required regardless of whether the mount is done with nomemcg
+or not.
+
+
 To specify the initial root directory you can use the following mount
 options:
 
