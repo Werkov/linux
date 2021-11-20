@@ -32,6 +32,7 @@ uffd-unit-tests
 uffd-wp-mremap
 mlock-intersect-test
 mlock-random-test
+mmap_write
 virtual_address_range
 gup_test
 va_128TBswitch
