@@ -3165,15 +3165,11 @@ out:
 			/* Avoid TOCTOU with earlier protection check */
 			cgroup_size = max(cgroup_size, protection);
 
-			scan = lruvec_size - lruvec_size * protection /
-				(cgroup_size + 1);
-
-			/*
-			 * Minimally target SWAP_CLUSTER_MAX pages to keep
-			 * reclaim moving forwards, avoiding decrementing
-			 * sc->priority further than desirable.
-			 */
-			scan = max(scan, SWAP_CLUSTER_MAX);
+			if (cgroup_size == 0)
+				scan = 0;
+			else
+				scan = lruvec_size - lruvec_size * protection /
+				(cgroup_size);
 		} else {
 			scan = lruvec_size;
 		}
