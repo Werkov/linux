@@ -24,6 +24,12 @@
 static bool has_localevents;
 static bool has_recursiveprot;
 
+#ifdef DEBUG
+#define FAIL(label)	{ printf("Fail at line %i\n", __LINE__); goto label; }
+#else
+#define FAIL(label)	goto label
+#endif
+
 /*
  * This test creates two nested cgroups with and without enabling
  * the memory controller.
@@ -38,37 +44,37 @@ static int test_memcg_subtree_control(const char *root)
 	parent = cg_name(root, "memcg_test_0");
 	child = cg_name(root, "memcg_test_0/memcg_test_1");
 	if (!parent || !child)
-		goto cleanup_free;
+		FAIL(cleanup_free);
 
 	if (cg_create(parent))
-		goto cleanup_free;
+		FAIL(cleanup_free);
 
 	if (cg_write(parent, "cgroup.subtree_control", "+memory"))
-		goto cleanup_parent;
+		FAIL(cleanup_parent);
 
 	if (cg_create(child))
-		goto cleanup_parent;
+		FAIL(cleanup_parent);
 
 	if (cg_read_strstr(child, "cgroup.controllers", "memory"))
-		goto cleanup_child;
+		FAIL(cleanup_child);
 
 	/* Create two nested cgroups without enabling memory controller */
 	parent2 = cg_name(root, "memcg_test_1");
 	child2 = cg_name(root, "memcg_test_1/memcg_test_1");
 	if (!parent2 || !child2)
-		goto cleanup_free2;
+		FAIL(cleanup_free2);
 
 	if (cg_create(parent2))
-		goto cleanup_free2;
+		FAIL(cleanup_free2);
 
 	if (cg_create(child2))
-		goto cleanup_parent2;
+		FAIL(cleanup_parent2);
 
 	if (cg_read(child2, "cgroup.controllers", buf, sizeof(buf)))
-		goto cleanup_all;
+		FAIL(cleanup_all);
 
 	if (!cg_read_strstr(child2, "cgroup.controllers", "memory"))
-		goto cleanup_all;
+		FAIL(cleanup_all);
 
 	ret = KSFT_PASS;
 
@@ -103,17 +109,17 @@ static int alloc_anon_50M_check(const char *cgroup, void *arg)
 
 	current = cg_read_long(cgroup, "memory.current");
 	if (current < size)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(size, current, 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	anon = cg_read_key_long(cgroup, "memory.stat", "anon ");
 	if (anon < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(anon, current, 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = 0;
 cleanup:
@@ -133,18 +139,18 @@ static int alloc_pagecache_50M_check(const char *cgroup, void *arg)
 		return -1;
 
 	if (alloc_pagecache(fd, size))
-		goto cleanup;
+		FAIL(cleanup);
 
 	current = cg_read_long(cgroup, "memory.current");
 	if (current < size)
-		goto cleanup;
+		FAIL(cleanup);
 
 	file = cg_read_key_long(cgroup, "memory.stat", "file ");
 	if (file < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(file, current, 10))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = 0;
 
@@ -166,20 +172,20 @@ static int test_memcg_current(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	current = cg_read_long(memcg, "memory.current");
 	if (current != 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_anon_50M_check, NULL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_pagecache_50M_check, NULL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -276,53 +282,53 @@ static int test_memcg_min(const char *root)
 
 	fd = get_temp_fd();
 	if (fd < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[0] = cg_name(root, "memcg_test_0");
 	if (!parent[0])
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[1] = cg_name(parent[0], "memcg_test_1");
 	if (!parent[1])
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[2] = cg_name(parent[0], "memcg_test_2");
 	if (!parent[2])
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[0]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_long(parent[0], "memory.min")) {
 		ret = KSFT_SKIP;
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	if (cg_write(parent[0], "cgroup.subtree_control", "+memory"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[0], "memory.max", "200M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[0], "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[1]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[1], "cgroup.subtree_control", "+memory"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[2]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	for (i = 0; i < ARRAY_SIZE(children); i++) {
 		children[i] = cg_name_indexed(parent[1], "child_memcg", i);
 		if (!children[i])
-			goto cleanup;
+			FAIL(cleanup);
 
 		if (cg_create(children[i]))
-			goto cleanup;
+			FAIL(cleanup);
 
 		if (i > 2)
 			continue;
@@ -332,17 +338,17 @@ static int test_memcg_min(const char *root)
 	}
 
 	if (cg_write(parent[0], "memory.min", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(parent[1], "memory.min", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[0], "memory.min", "75M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[1], "memory.min", "25M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[2], "memory.min", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[3], "memory.min", "500M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	attempts = 0;
 	while (!values_close(cg_read_long(parent[1], "memory.current"),
@@ -353,28 +359,28 @@ static int test_memcg_min(const char *root)
 	}
 
 	if (cg_run(parent[2], alloc_anon, (void *)MB(148)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(cg_read_long(parent[1], "memory.current"), MB(50), 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	for (i = 0; i < ARRAY_SIZE(children); i++)
 		c[i] = cg_read_long(children[i], "memory.current");
 
 	if (!values_close(c[0], MB(33), 10))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(c[1], MB(17), 10))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (c[3] != 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!cg_run(parent[2], alloc_anon, (void *)MB(170)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(cg_read_long(parent[1], "memory.current"), MB(50), 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -433,94 +439,94 @@ static int test_memcg_low(const char *root)
 
 	fd = get_temp_fd();
 	if (fd < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[0] = cg_name(root, "memcg_test_0");
 	if (!parent[0])
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[1] = cg_name(parent[0], "memcg_test_1");
 	if (!parent[1])
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent[2] = cg_name(parent[0], "memcg_test_2");
 	if (!parent[2])
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[0]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_long(parent[0], "memory.low"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[0], "cgroup.subtree_control", "+memory"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[0], "memory.max", "200M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[0], "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[1]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent[1], "cgroup.subtree_control", "+memory"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent[2]))
-		goto cleanup;
+		FAIL(cleanup);
 
 	for (i = 0; i < ARRAY_SIZE(children); i++) {
 		children[i] = cg_name_indexed(parent[1], "child_memcg", i);
 		if (!children[i])
-			goto cleanup;
+			FAIL(cleanup);
 
 		if (cg_create(children[i]))
-			goto cleanup;
+			FAIL(cleanup);
 
 		if (i > 2)
 			continue;
 
 		if (cg_run(children[i], alloc_pagecache_50M, (void *)(long)fd))
-			goto cleanup;
+			FAIL(cleanup);
 	}
 
 	if (cg_write(parent[0], "memory.low", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(parent[1], "memory.low", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[0], "memory.low", "75M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[1], "memory.low", "25M"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[2], "memory.low", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_write(children[3], "memory.low", "500M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(parent[2], alloc_anon, (void *)MB(148)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(cg_read_long(parent[1], "memory.current"), MB(50), 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	for (i = 0; i < ARRAY_SIZE(children); i++)
 		c[i] = cg_read_long(children[i], "memory.current");
 
 	if (!values_close(c[0], MB(33), 10))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!values_close(c[1], MB(17), 10))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (c[3] != 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(parent[2], alloc_anon, (void *)MB(166))) {
 		fprintf(stderr,
 			"memory.low prevents from allocating anon memory\n");
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(children); i++) {
@@ -530,11 +536,11 @@ static int test_memcg_low(const char *root)
 		low = cg_read_key_long(children[i], "memory.events", "low ");
 
 		if (oom)
-			goto cleanup;
+			FAIL(cleanup);
 		if (i <= no_low_events_index && low <= 0)
-			goto cleanup;
+			FAIL(cleanup);
 		if (i > no_low_events_index && low)
-			goto cleanup;
+			FAIL(cleanup);
 
 	}
 
@@ -570,18 +576,18 @@ static int alloc_pagecache_max_30M(const char *cgroup, void *arg)
 	high = cg_read_long(cgroup, "memory.high");
 	max = cg_read_long(cgroup, "memory.max");
 	if (high != MB(30) && max != MB(30))
-		goto cleanup;
+		FAIL(cleanup);
 
 	fd = get_temp_fd();
 	if (fd < 0)
 		return -1;
 
 	if (alloc_pagecache(fd, size))
-		goto cleanup;
+		FAIL(cleanup);
 
 	current = cg_read_long(cgroup, "memory.current");
 	if (!values_close(current, MB(30), 5))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = 0;
 
@@ -604,32 +610,32 @@ static int test_memcg_high(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_strcmp(memcg, "memory.high", "max\n"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.high", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!cg_run(memcg, alloc_pagecache_50M_check, NULL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_pagecache_max_30M, NULL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	high = cg_read_key_long(memcg, "memory.events", "high ");
 	if (high <= 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -668,42 +674,42 @@ static int test_memcg_high_sync(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	pre_high = cg_read_key_long(memcg, "memory.events", "high ");
 	pre_max = cg_read_key_long(memcg, "memory.events", "max ");
 	if (pre_high < 0 || pre_max < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.high", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.max", "140M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	fd = memcg_prepare_for_wait(memcg);
 	if (fd < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	pid = cg_run_nowait(memcg, alloc_anon_mlock, (void *)MB(200));
 	if (pid < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	cg_wait_for(fd);
 
 	post_high = cg_read_key_long(memcg, "memory.events", "high ");
 	post_max = cg_read_key_long(memcg, "memory.events", "max ");
 	if (post_high < 0 || post_max < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (pre_high == post_high || pre_max != post_max)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -729,34 +735,34 @@ static int test_memcg_max(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_strcmp(memcg, "memory.max", "max\n"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.max", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	/* Should be killed by OOM killer */
 	if (!cg_run(memcg, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_pagecache_max_30M, NULL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	current = cg_read_long(memcg, "memory.current");
 	if (current > MB(30) || !current)
-		goto cleanup;
+		FAIL(cleanup);
 
 	max = cg_read_key_long(memcg, "memory.events", "max ");
 	if (max <= 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -781,12 +787,12 @@ static int alloc_anon_50M_check_swap(const char *cgroup, void *arg)
 
 	mem_current = cg_read_long(cgroup, "memory.current");
 	if (!mem_current || !values_close(mem_current, mem_max, 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	swap_current = cg_read_long(cgroup, "memory.swap.current");
 	if (!swap_current ||
 	    !values_close(mem_current + swap_current, size, 3))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = 0;
 cleanup:
@@ -809,44 +815,44 @@ static int test_memcg_swap_max(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_long(memcg, "memory.swap.current")) {
 		ret = KSFT_SKIP;
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	if (cg_read_strcmp(memcg, "memory.max", "max\n"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_strcmp(memcg, "memory.swap.max", "max\n"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.max", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	/* Should be killed by OOM killer */
 	if (!cg_run(memcg, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.events", "oom ") != 1)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.events", "oom_kill ") != 1)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_run(memcg, alloc_anon_50M_check_swap, (void *)MB(30)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	max = cg_read_key_long(memcg, "memory.events", "max ");
 	if (max <= 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -869,28 +875,28 @@ static int test_memcg_oom_events(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.max", "30M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (!cg_run(memcg, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_strcmp(memcg, "cgroup.procs", ""))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.events", "oom ") != 1)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.events", "oom_kill ") != 1)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -925,25 +931,25 @@ static int tcp_server(const char *cgroup, void *arg)
 		return ret;
 
 	if (setsockopt(sk, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (bind(sk, (struct sockaddr *)&saddr, slen)) {
 		write(ctl_fd, &errno, sizeof(errno));
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	if (listen(sk, 1))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = 0;
 	if (write(ctl_fd, &ret, sizeof(ret)) != sizeof(ret)) {
 		ret = -1;
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	client_sk = accept(sk, NULL, NULL);
 	if (client_sk < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = -1;
 	for (;;) {
@@ -1027,53 +1033,53 @@ static int test_memcg_sock(const char *root)
 
 	memcg = cg_name(root, "memcg_test");
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	while (bind_retries--) {
 		struct tcp_server_args args;
 
 		if (pipe(args.ctl))
-			goto cleanup;
+			FAIL(cleanup);
 
 		port = args.port = 1000 + rand() % 60000;
 
 		pid = cg_run_nowait(memcg, tcp_server, &args);
 		if (pid < 0)
-			goto cleanup;
+			FAIL(cleanup);
 
 		close(args.ctl[1]);
 		if (read(args.ctl[0], &err, sizeof(err)) != sizeof(err))
-			goto cleanup;
+			FAIL(cleanup);
 		close(args.ctl[0]);
 
 		if (!err)
 			break;
 		if (err != EADDRINUSE)
-			goto cleanup;
+			FAIL(cleanup);
 
 		waitpid(pid, NULL, 0);
 	}
 
 	if (err == EADDRINUSE) {
 		ret = KSFT_SKIP;
-		goto cleanup;
+		FAIL(cleanup);
 	}
 
 	if (tcp_client(memcg, port) != KSFT_PASS)
-		goto cleanup;
+		FAIL(cleanup);
 
 	waitpid(pid, &err, 0);
 	if (WEXITSTATUS(err))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_long(memcg, "memory.current") < 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.stat", "sock "))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -1099,37 +1105,37 @@ static int test_memcg_oom_group_leaf_events(const char *root)
 	child = cg_name(root, "memcg_test_0/memcg_test_1");
 
 	if (!parent || !child)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(child))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent, "cgroup.subtree_control", "+memory"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(child, "memory.max", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(child, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(child, "memory.oom.group", "1"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	cg_run_nowait(parent, alloc_anon_noexit, (void *) MB(60));
 	cg_run_nowait(child, alloc_anon_noexit, (void *) MB(1));
 	cg_run_nowait(child, alloc_anon_noexit, (void *) MB(1));
 	if (!cg_run(child, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_test_proc_killed(child))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(child, "memory.events", "oom_kill ") <= 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	parent_oom_events = cg_read_key_long(
 			parent, "memory.events", "oom_kill ");
@@ -1138,9 +1144,9 @@ static int test_memcg_oom_group_leaf_events(const char *root)
 	// have observed any events.
 	if (has_localevents) {
 		if (parent_oom_events != 0)
-			goto cleanup;
+			FAIL(cleanup);
 	} else if (parent_oom_events <= 0)
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -1169,34 +1175,34 @@ static int test_memcg_oom_group_parent_events(const char *root)
 	child = cg_name(root, "memcg_test_0/memcg_test_1");
 
 	if (!parent || !child)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(parent))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(child))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent, "memory.max", "80M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(parent, "memory.oom.group", "1"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	cg_run_nowait(parent, alloc_anon_noexit, (void *) MB(60));
 	cg_run_nowait(child, alloc_anon_noexit, (void *) MB(1));
 	cg_run_nowait(child, alloc_anon_noexit, (void *) MB(1));
 
 	if (!cg_run(child, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_test_proc_killed(child))
-		goto cleanup;
+		FAIL(cleanup);
 	if (cg_test_proc_killed(parent))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
@@ -1225,33 +1231,33 @@ static int test_memcg_oom_group_score_events(const char *root)
 	memcg = cg_name(root, "memcg_test_0");
 
 	if (!memcg)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_create(memcg))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.max", "50M"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.swap.max", "0"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_write(memcg, "memory.oom.group", "1"))
-		goto cleanup;
+		FAIL(cleanup);
 
 	safe_pid = cg_run_nowait(memcg, alloc_anon_noexit, (void *) MB(1));
 	if (set_oom_adj_score(safe_pid, OOM_SCORE_ADJ_MIN))
-		goto cleanup;
+		FAIL(cleanup);
 
 	cg_run_nowait(memcg, alloc_anon_noexit, (void *) MB(1));
 	if (!cg_run(memcg, alloc_anon, (void *)MB(100)))
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (cg_read_key_long(memcg, "memory.events", "oom_kill ") != 3)
-		goto cleanup;
+		FAIL(cleanup);
 
 	if (kill(safe_pid, SIGKILL))
-		goto cleanup;
+		FAIL(cleanup);
 
 	ret = KSFT_PASS;
 
