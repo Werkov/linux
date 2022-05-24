@@ -2205,11 +2205,14 @@ static void cgroup_kill_sb(struct super_block *sb)
 	struct cgroup_root *root = cgroup_root_from_kf(kf_root);
 
 	/*
-	 * If @root doesn't have any children, start killing it.
+	 * If @root doesn't have any children held by residual state (e.g.
+	 * memory controller), start killing it, flush workqueue to filter out
+	 * transiently offlined children.
 	 * This prevents new mounts by disabling percpu_ref_tryget_live().
 	 *
 	 * And don't kill the default root.
 	 */
+	flush_workqueue(cgroup_destroy_wq);
 	if (list_empty(&root->cgrp.self.children) && root != &cgrp_dfl_root &&
 	    !percpu_ref_is_dying(&root->cgrp.self.refcnt)) {
 		cgroup_bpf_offline(&root->cgrp);
