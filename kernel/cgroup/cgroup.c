@@ -5102,7 +5102,7 @@ static struct cftype cgroup_base_files[] = {
  *    css_free_work_fn().
  *
  * It is actually hairier because both step 2 and 4 require process context
- * and thus involve punting to css->release_work adding two additional
+ * and thus involve punting to css->destroy_work adding two additional
  * steps to the already complex sequence.
  */
 static void css_free_rwork_fn(struct work_struct *work)
@@ -5157,7 +5157,7 @@ static void css_free_rwork_fn(struct work_struct *work)
 static void css_release_work_fn(struct work_struct *work)
 {
 	struct cgroup_subsys_state *css =
-		container_of(work, struct cgroup_subsys_state, release_work);
+		container_of(work, struct cgroup_subsys_state, destroy_work);
 	struct cgroup_subsys *ss = css->ss;
 	struct cgroup *cgrp = css->cgroup;
 
@@ -5213,8 +5213,8 @@ static void css_release(struct percpu_ref *ref)
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
 
-	INIT_WORK(&css->release_work, css_release_work_fn);
-	queue_work(cgroup_destroy_wq, &css->release_work);
+	INIT_WORK(&css->destroy_work, css_release_work_fn);
+	queue_work(cgroup_destroy_wq, &css->destroy_work);
 }
 
 static void init_and_link_css(struct cgroup_subsys_state *css,
@@ -5549,7 +5549,7 @@ out_unlock:
 static void css_killed_work_fn(struct work_struct *work)
 {
 	struct cgroup_subsys_state *css =
-		container_of(work, struct cgroup_subsys_state, killed_ref_work);
+		container_of(work, struct cgroup_subsys_state, destroy_work);
 
 	mutex_lock(&cgroup_mutex);
 
@@ -5570,8 +5570,8 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 		container_of(ref, struct cgroup_subsys_state, refcnt);
 
 	if (atomic_dec_and_test(&css->online_cnt)) {
-		INIT_WORK(&css->killed_ref_work, css_killed_work_fn);
-		queue_work(cgroup_destroy_wq, &css->killed_ref_work);
+		INIT_WORK(&css->destroy_work, css_killed_work_fn);
+		queue_work(cgroup_destroy_wq, &css->destroy_work);
 	}
 }
 
