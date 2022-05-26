@@ -153,15 +153,19 @@ static void percpu_ref_call_confirm_rcu(struct rcu_head *rcu)
 			struct percpu_ref_data, rcu);
 	struct percpu_ref *ref = data->ref;
 
+	trace_printk("pre-conf %lu\n", atomic_long_read(&data->count));
 	data->confirm_switch(ref);
 	data->confirm_switch = NULL;
+	trace_printk("post-conf %lu\n", atomic_long_read(&data->count));
 	wake_up_all(&percpu_ref_switch_waitq);
 
 	if (!data->allow_reinit)
 		__percpu_ref_exit(ref);
 
+	trace_printk("pre-put %lu\n", atomic_long_read(&data->count));
 	/* drop ref from percpu_ref_switch_to_atomic() */
 	percpu_ref_put(ref);
+	trace_printk("post-put %lu\n", atomic_long_read(&data->count));
 }
 
 static void percpu_ref_switch_to_atomic_rcu(struct rcu_head *rcu)
@@ -177,7 +181,7 @@ static void percpu_ref_switch_to_atomic_rcu(struct rcu_head *rcu)
 	for_each_possible_cpu(cpu)
 		count += *per_cpu_ptr(percpu_count, cpu);
 
-	pr_debug("global %lu percpu %lu\n",
+	trace_printk("global %lu percpu %lu\n",
 		 atomic_long_read(&data->count), count);
 
 	/*
