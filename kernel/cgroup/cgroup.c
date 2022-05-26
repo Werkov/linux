@@ -5552,7 +5552,9 @@ static void css_killed_work_fn(struct work_struct *work)
 
 	do {
 		offline_css(css);
+		trace_printk("%p pre-put %lu\n", &css->refcnt, atomic_long_read(&css->refcnt.data->count));
 		css_put(css);
+		trace_printk("%p post-put %lu\n", &css->refcnt, atomic_long_read(&css->refcnt.data->count));
 		/* @css can't go away while we're holding cgroup_mutex */
 		css = css->parent;
 	} while (css && atomic_dec_and_test(&css->online_cnt));

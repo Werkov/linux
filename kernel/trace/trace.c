@@ -134,7 +134,7 @@ cpumask_var_t __read_mostly	tracing_buffer_mask;
  * Set 2 if you want to dump the buffer of the CPU that triggered oops
  */
 
-enum ftrace_dump_mode ftrace_dump_on_oops;
+enum ftrace_dump_mode ftrace_dump_on_oops = DUMP_ALL;
 
 /* When set, tracing will stop when a WARN*() is hit */
 int __disable_trace_on_warning;
