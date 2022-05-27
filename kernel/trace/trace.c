@@ -9866,6 +9866,8 @@ void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
 	unsigned long flags;
 	int cnt = 0, cpu;
 
+	trace_printk("this is trace end\n");
+
 	/* Only allow one dump user at a time. */
 	if (atomic_inc_return(&dump_running) != 1) {
 		atomic_dec(&dump_running);
