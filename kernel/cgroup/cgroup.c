@@ -5209,6 +5209,7 @@ static void css_release(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
+	trace_printk("%p =0\n", &css->refcnt);
 
 	INIT_WORK(&css->destroy_work, css_release_work_fn);
 	queue_work(cgroup_destroy_wq, &css->destroy_work);
@@ -5312,6 +5313,7 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 	err = percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL);
 	if (err)
 		goto err_free_css;
+	trace_printk("%p =1 ss=%s\n", &css->refcnt, ss->name);
 
 	err = cgroup_idr_alloc(&ss->css_idr, NULL, 2, 0, GFP_KERNEL);
 	if (err < 0)
@@ -5567,6 +5569,7 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
+	trace_printk("%p =%lu\n", &css->refcnt, atomic_long_read(&css->refcnt.data->count));
 
 	if (atomic_dec_and_test(&css->online_cnt)) {
 		INIT_WORK(&css->destroy_work, css_killed_work_fn);
@@ -5586,6 +5589,7 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 static void kill_css(struct cgroup_subsys_state *css)
 {
 	lockdep_assert_held(&cgroup_mutex);
+	trace_printk("%p\n", &css->refcnt);
 
 	if (css->flags & CSS_DYING)
 		return;

@@ -320,8 +320,10 @@ static inline u64 cgroup_id(const struct cgroup *cgrp)
  */
 static inline void css_get(struct cgroup_subsys_state *css)
 {
-	if (!(css->flags & CSS_NO_REF))
+	if (!(css->flags & CSS_NO_REF)) {
+		trace_printk("%p ++\n", &css->refcnt);
 		percpu_ref_get(&css->refcnt);
+	}
 }
 
 /**
@@ -400,8 +402,10 @@ static inline bool css_is_dying(struct cgroup_subsys_state *css)
  */
 static inline void css_put(struct cgroup_subsys_state *css)
 {
-	if (!(css->flags & CSS_NO_REF))
+	if (!(css->flags & CSS_NO_REF)) {
+		trace_printk("%p --\n", &css->refcnt);
 		percpu_ref_put(&css->refcnt);
+	}
 }
 
 /**
