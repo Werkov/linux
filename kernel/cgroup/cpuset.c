@@ -2495,6 +2495,13 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
 		ret = task_can_attach(task, cs->effective_cpus);
 		if (ret)
 			goto out_unlock;
+
+		/*
+		 * Skip rights over task check in v2, migration permission derives
+		 * from hierarchy ownership in cgroup_procs_write_permission()).
+		 */
+		if (is_in_v2_mode())
+			continue;
 		ret = security_task_setscheduler(task);
 		if (ret)
 			goto out_unlock;
