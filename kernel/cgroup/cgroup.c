@@ -1413,11 +1413,11 @@ static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
 }
 
 /*
- * look up cgroup associated with current task's cgroup namespace on the
+ * look up cgroup associated with given cgroup namespace on the
  * specified hierarchy
  */
-static struct cgroup *
-current_cgns_cgroup_from_root(struct cgroup_root *root)
+static struct cgroup *cgns_cgroup_from_root(struct cgroup_root *root,
+					    struct cgroup_namespace *ns)
 {
 	struct cgroup *res = NULL;
 	struct css_set *cset;
@@ -1426,7 +1426,7 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 
 	rcu_read_lock();
 
-	cset = current->nsproxy->cgroup_ns->root_cset;
+	cset = ns->root_cset;
 	res = __cset_cgroup_from_root(cset, root);
 
 	rcu_read_unlock();
@@ -1898,15 +1898,15 @@ int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 	int len = 0;
 	char *buf = NULL;
 	struct cgroup_root *kf_cgroot = cgroup_root_from_kf(kf_root);
-	struct cgroup *ns_cgroup;
+	struct cgroup *root_cgroup;
 
 	buf = kmalloc(PATH_MAX, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
 	spin_lock_irq(&css_set_lock);
-	ns_cgroup = current_cgns_cgroup_from_root(kf_cgroot);
-	len = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, PATH_MAX);
+	root_cgroup = cgns_cgroup_from_root(kf_cgroot, current->nsproxy->cgroup_ns);
+	len = kernfs_path_from_node(kf_node, root_cgroup->kn, buf, PATH_MAX);
 	spin_unlock_irq(&css_set_lock);
 
 	if (len >= PATH_MAX)
@@ -2375,6 +2375,18 @@ int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cgroup_path_ns);
+
+struct cgroup *cgroup_parent_ns(struct cgroup *cgrp,
+				   struct cgroup_namespace *ns)
+{
+	struct cgroup *root_cgrp;
+
+	spin_lock_irq(&css_set_lock);
+	root_cgrp = cgns_cgroup_from_root(cgrp->root, ns);
+	spin_unlock_irq(&css_set_lock);
+
+	return cgrp == root_cgrp ? NULL : cgroup_parent(cgrp);
+}
 
 /**
  * cgroup_attach_lock - Lock for ->attach()
