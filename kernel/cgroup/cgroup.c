@@ -1697,9 +1697,6 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
 	struct cgroup *cgrp = css->cgroup;
 	struct cftype *cfts;
 
-	if (!(css->flags & CSS_VISIBLE))
-		return;
-
 	css->flags &= ~CSS_VISIBLE;
 
 	if (!css->ss) {
@@ -1723,12 +1720,12 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
  * css_populate_dir - create subsys files in a cgroup directory
  * @css: target css
  *
- * On failure, no file is added.
+ * On failure, css_clear_dir must be called.
  */
 static int css_populate_dir(struct cgroup_subsys_state *css)
 {
 	struct cgroup *cgrp = css->cgroup;
-	struct cftype *cfts, *failed_cfts;
+	struct cftype *cfts;
 	int ret;
 
 	if (css->flags & CSS_VISIBLE)
@@ -1756,23 +1753,14 @@ static int css_populate_dir(struct cgroup_subsys_state *css)
 	} else {
 		list_for_each_entry(cfts, &css->ss->cfts, node) {
 			ret = cgroup_addrm_files(css, cgrp, cfts, true);
-			if (ret < 0) {
-				failed_cfts = cfts;
-				goto err;
-			}
+			if (ret < 0)
+				return ret;
 		}
 	}
 
 	css->flags |= CSS_VISIBLE;
 
 	return 0;
-err:
-	list_for_each_entry(cfts, &css->ss->cfts, node) {
-		if (cfts == failed_cfts)
-			break;
-		cgroup_addrm_files(css, cgrp, cfts, false);
-	}
-	return ret;
 }
 
 int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
@@ -2152,6 +2140,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 exit_stats:
 	cgroup_rstat_exit(root_cgrp);
 destroy_root:
+	css_clear_dir(&root_cgrp->self);
 	kernfs_destroy_root(root->kf_root);
 	root->kf_root = NULL;
 exit_root_id:
@@ -4233,13 +4222,12 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 			      struct cgroup *cgrp, struct cftype cfts[],
 			      bool is_add)
 {
-	struct cftype *cft, *cft_end = NULL;
+	struct cftype *cft;
 	int ret = 0;
 
 	lockdep_assert_held(&cgroup_mutex);
 
-restart:
-	for (cft = cfts; cft != cft_end && cft->name[0] != '\0'; cft++) {
+	for (cft = cfts; cft->name[0] != '\0'; cft++) {
 		/* does cft->flags tell us to skip this file on @cgrp? */
 		if ((cft->flags & __CFTYPE_ONLY_ON_DFL) && !cgroup_on_dfl(cgrp))
 			continue;
@@ -4256,9 +4244,7 @@ restart:
 			if (ret) {
 				pr_warn("%s: failed to add %s, err=%d\n",
 					__func__, cft->name, ret);
-				cft_end = cft;
-				is_add = false;
-				goto restart;
+				break;
 			}
 		} else {
 			cgroup_rm_file(cgrp, cft);
@@ -4280,7 +4266,7 @@ static int cgroup_apply_cftypes(struct cftype *cfts, bool is_add)
 	css_for_each_descendant_pre(css, cgroup_css(root, ss)) {
 		struct cgroup *cgrp = css->cgroup;
 
-		if (!(css->flags & CSS_VISIBLE))
+		if (!css_visible(css))
 			continue;
 
 		ret = cgroup_addrm_files(css, cgrp, cfts, is_add);
@@ -6149,7 +6135,8 @@ int __init cgroup_init(void)
 			ss->bind(init_css_set.subsys[ssid]);
 
 		cgroup_lock();
-		css_populate_dir(init_css_set.subsys[ssid]);
+		if (css_populate_dir(init_css_set.subsys[ssid]))
+			css_clear_dir(init_css_set.subsys[ssid]);
 		cgroup_unlock();
 	}
 
