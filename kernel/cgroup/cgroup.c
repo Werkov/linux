@@ -3767,6 +3767,9 @@ static ssize_t pressure_write(struct kernfs_open_file *of, char *buf,
 	struct cgroup *cgrp;
 	struct psi_group *psi;
 
+	if (!cgroup_psi_enabled())
+		return -EOPNOTSUPP;
+
 	cgrp = cgroup_kn_lock_live(of->kn, false);
 	if (!cgrp)
 		return -ENODEV;

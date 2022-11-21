@@ -1277,9 +1277,6 @@ struct psi_trigger *psi_trigger_create(struct psi_group *group, char *buf,
 	bool privileged;
 	u32 window_us;
 
-	if (static_branch_likely(&psi_disabled))
-		return ERR_PTR(-EOPNOTSUPP);
-
 	/*
 	 * Checking the privilege here on file->f_cred implies that a privileged user
 	 * could open the file and delegate the write to an unprivileged one.
