@@ -350,6 +350,10 @@ static struct blkcg_gq *blkg_alloc(struct blkcg *blkcg, struct gendisk *disk,
 		pd->blkg = blkg;
 		pd->plid = i;
 		pd->online = false;
+
+		/* init after alloc from blkg_create() */
+		// XXX blkg->parent == NULL
+		pol->pd_init_fn(blkg->pd[i]);
 	}
 
 	return blkg;
@@ -410,14 +414,6 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg, struct gendisk *disk,
 			goto err_put_css;
 		}
 		blkg_get(blkg->parent);
-	}
-
-	/* invoke per-policy init */
-	for (i = 0; i < BLKCG_MAX_POLS; i++) {
-		struct blkcg_policy *pol = blkcg_policy[i];
-
-		if (blkg->pd[i] && pol->pd_init_fn)
-			pol->pd_init_fn(blkg->pd[i]);
 	}
 
 	/* insert */
@@ -1521,6 +1517,13 @@ int blkcg_activate_policy(struct gendisk *disk, const struct blkcg_policy *pol)
 
 	if (queue_is_mq(q))
 		blk_mq_freeze_queue(q);
+	// XXX for each of q's blkg pd_alloc is called,
+	// it's under q->lock
+	// if single allocation fails, unlock, keep allocated pd's
+	// allocate w/out lock and then retry whole list
+	// use one pre-alloced object and then continue GFP_NOWAIT again
+	// worst case: each allocation is retried w/out lock as GFP_KERNEL
+	// impact: pd_init_fn would prolong holding of q->queue_lock
 retry:
 	spin_lock_irq(&q->queue_lock);
 
@@ -1538,6 +1541,7 @@ retry:
 		} else {
 			pd = pol->pd_alloc_fn(disk, blkg->blkcg,
 					      GFP_NOWAIT | __GFP_NOWARN);
+			// XXX init here
 		}
 
 		if (!pd) {
@@ -1554,8 +1558,11 @@ retry:
 
 			if (pd_prealloc)
 				pol->pd_free_fn(pd_prealloc);
+				// XXX I may waste init-work here
 			pd_prealloc = pol->pd_alloc_fn(disk, blkg->blkcg,
 						       GFP_KERNEL);
+			// XXX init here
+			// XXX this is without q->queue_lock
 			if (pd_prealloc)
 				goto retry;
 			else
