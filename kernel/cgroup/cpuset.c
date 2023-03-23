@@ -1808,7 +1808,7 @@ static bool prstate_housekeeping_conflict(int prstate, struct cpumask *new_cpus)
  * check for error and so partition_root_state and prs_error will be updated
  * directly.
  */
-static int update_parent_effective_cpumask(struct cpuset *cs, int cmd,
+static int update_parent_subparts_cpumask(struct cpuset *cs, enum subparts_cmd cmd,
 					   struct cpumask *newmask,
 					   struct tmpmasks *tmp)
 {
