@@ -80,6 +80,10 @@ static inline struct mnt_idmap *mnt_idmap(const struct vfsmount *mnt)
 	return smp_load_acquire(&mnt->mnt_idmap);
 }
 
+#ifdef CONFIG_LOCKDEP
+extern struct rw_semaphore namespace_sem;
+#endif
+
 extern int mnt_want_write(struct vfsmount *mnt);
 extern int mnt_want_write_file(struct file *file);
 extern void mnt_drop_write(struct vfsmount *mnt);

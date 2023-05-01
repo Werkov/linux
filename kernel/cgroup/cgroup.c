@@ -1440,12 +1440,11 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 
 	lockdep_assert_held(&css_set_lock);
 
-	rcu_read_lock();
+	/* namespace_sem ensures `root` stability on unmount */
+	lockdep_assert(lockdep_is_held_type(&namespace_sem, -1));
 
 	cset = current->nsproxy->cgroup_ns->root_cset;
 	res = __cset_cgroup_from_root(cset, root);
-
-	rcu_read_unlock();
 
 	return res;
 }
@@ -1454,7 +1453,7 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
  * Look up cgroup associated with current task's cgroup namespace on the default
  * hierarchy.
  *
- * Unlike current_cgns_cgroup_from_root(), this doesn't need locks:
+ * Relaxed locking requirements:
  * - Internal rcu_read_lock is unnecessary because we don't dereference any rcu
  *   pointers.
  * - css_set_lock is not needed because we just read cset->dfl_cgrp.
