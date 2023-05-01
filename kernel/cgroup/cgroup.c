@@ -1407,12 +1407,18 @@ static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
 	struct cgroup *res_cgroup = NULL;
 
 	if (cset == &init_css_set) {
+		/* callers must ensure root stability */
 		res_cgroup = &root->cgrp;
 	} else if (root == &cgrp_dfl_root) {
 		res_cgroup = cset->dfl_cgrp;
 	} else {
 		struct cgrp_cset_link *link;
-		lockdep_assert_held(&css_set_lock);
+		/* cset's cgroups are pinned unless they are root cgroups that
+		 * were unmounted.  We look at links to !cgrp_dfl_root
+		 * cgroup_root, either lock ensures the list is not mutated
+		 */
+		lockdep_assert(lockdep_is_held(&css_set_lock) ||
+			       lockdep_is_held_type(&namespace_sem, -1));
 
 		list_for_each_entry(link, &cset->cgrp_links, cgrp_link) {
 			struct cgroup *c = link->cgrp;
@@ -1437,8 +1443,6 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 {
 	struct cgroup *res = NULL;
 	struct css_set *cset;
-
-	lockdep_assert_held(&css_set_lock);
 
 	/* namespace_sem ensures `root` stability on unmount */
 	lockdep_assert(lockdep_is_held_type(&namespace_sem, -1));
@@ -1905,10 +1909,8 @@ int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 	if (!buf)
 		return -ENOMEM;
 
-	spin_lock_irq(&css_set_lock);
 	ns_cgroup = current_cgns_cgroup_from_root(kf_cgroot);
 	len = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, PATH_MAX);
-	spin_unlock_irq(&css_set_lock);
 
 	if (len >= PATH_MAX)
 		len = -ERANGE;
