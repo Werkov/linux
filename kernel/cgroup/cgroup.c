@@ -504,7 +504,7 @@ static struct cgroup_subsys_state *cgroup_css(struct cgroup *cgrp,
  * enabled.  If @ss is associated with the hierarchy @cgrp is on, this
  * function is guaranteed to return non-NULL css.
  */
-static struct cgroup_subsys_state *cgroup_e_css_by_mask(struct cgroup *cgrp,
+static struct cgroup_subsys_state *cgroup_e_css_locked(struct cgroup *cgrp,
 							struct cgroup_subsys *ss)
 {
 	lockdep_assert_held(&cgroup_mutex);
@@ -523,38 +523,6 @@ static struct cgroup_subsys_state *cgroup_e_css_by_mask(struct cgroup *cgrp,
 	}
 
 	return cgroup_css(cgrp, ss);
-}
-
-/**
- * cgroup_e_css - obtain a cgroup's effective css for the specified subsystem
- * @cgrp: the cgroup of interest
- * @ss: the subsystem of interest
- *
- * Find and get the effective css of @cgrp for @ss.  The effective css is
- * defined as the matching css of the nearest ancestor including self which
- * has @ss enabled.  If @ss is not mounted on the hierarchy @cgrp is on,
- * the root css is returned, so this function always returns a valid css.
- *
- * The returned css is not guaranteed to be online, and therefore it is the
- * callers responsibility to try get a reference for it.
- */
-struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
-					 struct cgroup_subsys *ss)
-{
-	struct cgroup_subsys_state *css;
-
-	if (!CGROUP_HAS_SUBSYS_CONFIG)
-		return NULL;
-
-	do {
-		css = cgroup_css(cgrp, ss);
-
-		if (css)
-			return css;
-		cgrp = cgroup_parent(cgrp);
-	} while (cgrp);
-
-	return init_css_set.subsys[ss->id];
 }
 
 /**
@@ -1069,7 +1037,7 @@ static struct css_set *find_existing_css_set(struct css_set *old_cset,
 			 * @ss is in this hierarchy, so we want the
 			 * effective css from @cgrp.
 			 */
-			template[i] = cgroup_e_css_by_mask(cgrp, ss);
+			template[i] = cgroup_e_css_locked(cgrp, ss);
 		} else {
 			/*
 			 * @ss is not in this hierarchy, so we don't want
