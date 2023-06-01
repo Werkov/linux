@@ -581,7 +581,7 @@ struct cgroup_subsys_state *cgroup_get_e_css(struct cgroup *cgrp,
 	do {
 		css = cgroup_css(cgrp, ss);
 
-		if (css && css_tryget_online(css))
+		if (css && css_tryget(css))
 			goto out_unlock;
 		cgrp = cgroup_parent(cgrp);
 	} while (cgrp);
