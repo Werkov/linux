@@ -233,8 +233,9 @@ static void bio_associate_blkg_from_page(struct bio *bio, struct folio *folio)
 		return;
 
 	rcu_read_lock();
-	css = cgroup_e_css(memcg->css.cgroup, &io_cgrp_subsys);
+	css = cgroup_get_e_css(memcg->css.cgroup, &io_cgrp_subsys);
 	bio_associate_blkg_from_css(bio, css);
+	css_put(css); // XXX old version didn't need get-put pair
 	rcu_read_unlock();
 }
 #else

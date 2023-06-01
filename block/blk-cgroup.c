@@ -2030,34 +2030,6 @@ void blkcg_add_delay(struct blkcg_gq *blkg, u64 now, u64 delta)
 }
 
 /**
- * blkg_tryget_closest - try and get a blkg ref on the closet blkg
- * @bio: target bio
- * @css: target css
- *
- * As the failure mode here is to walk up the blkg tree, this ensure that the
- * blkg->parent pointers are always valid.  This returns the blkg that it ended
- * up taking a reference on or %NULL if no reference was taken.
- */
-static inline struct blkcg_gq *blkg_tryget_closest(struct bio *bio,
-		struct cgroup_subsys_state *css)
-{
-	struct blkcg_gq *blkg, *ret_blkg = NULL;
-
-	rcu_read_lock();
-	blkg = blkg_lookup_create(css_to_blkcg(css), bio->bi_bdev->bd_disk);
-	while (blkg) {
-		if (blkg_tryget(blkg)) {
-			ret_blkg = blkg;
-			break;
-		}
-		blkg = blkg->parent;
-	}
-	rcu_read_unlock();
-
-	return ret_blkg;
-}
-
-/**
  * bio_associate_blkg_from_css - associate a bio with a specified css
  * @bio: target bio
  * @css: target css
@@ -2078,7 +2050,7 @@ void bio_associate_blkg_from_css(struct bio *bio,
 		blkg_put(bio->bi_blkg);
 
 	if (css && css->parent) {
-		bio->bi_blkg = blkg_tryget_closest(bio, css);
+		bio->bi_blkg = blkg_lookup_create(css_to_blkcg(css), bio->bi_bdev->bd_disk);
 	} else {
 		blkg_get(bdev_get_queue(bio->bi_bdev)->root_blkg);
 		bio->bi_blkg = bdev_get_queue(bio->bi_bdev)->root_blkg;
