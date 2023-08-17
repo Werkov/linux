@@ -49,8 +49,9 @@ struct pids_cgroup {
 	atomic64_t			limit;
 	int64_t				watermark;
 
-	/* Handle for "pids.events" */
+	/* Handles for pids.events[.local] */
 	struct cgroup_file		events_file;
+	struct cgroup_file		events_local_file;
 
 	/* Number of times fork failed in subtree because this pids_cgroup
 	 * limit was hit. */
@@ -367,12 +368,24 @@ static s64 pids_peak_read(struct cgroup_subsys_state *css,
 	return READ_ONCE(pids->watermark);
 }
 
-static int pids_events_show(struct seq_file *sf, void *v)
+static int __pids_events_show(struct seq_file *sf, bool local)
 {
 	struct pids_cgroup *pids = css_pids(seq_css(sf));
-
+	// XXX implement local
 	seq_printf(sf, "max %lld\n", (s64)atomic64_read(&pids->events_limit));
 	seq_printf(sf, "max.imposed %lld\n", (s64)atomic64_read(&pids->events_limit_imposed));
+	return 0;
+}
+
+static int pids_events_show(struct seq_file *sf, void *v)
+{
+	__pids_events_show(sf, false);
+	return 0;
+}
+
+static int pids_events_local_show(struct seq_file *sf, void *v)
+{
+	__pids_events_show(sf, true);
 	return 0;
 }
 
@@ -404,6 +417,12 @@ static struct cftype pids_files[] = {
 	{
 		.name = "events",
 		.seq_show = pids_events_show,
+		.file_offset = offsetof(struct pids_cgroup, events_file),
+		.flags = CFTYPE_NOT_ON_ROOT,
+	},
+	{
+		.name = "events.local",
+		.seq_show = pids_events_local_show,
 		.file_offset = offsetof(struct pids_cgroup, events_file),
 		.flags = CFTYPE_NOT_ON_ROOT,
 	},
