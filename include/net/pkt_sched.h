@@ -100,6 +100,7 @@ struct Qdisc *fifo_create_dflt(struct Qdisc *sch, struct Qdisc_ops *ops,
 
 int register_qdisc(struct Qdisc_ops *qops);
 void unregister_qdisc(struct Qdisc_ops *qops);
+#define MODULE_ALIAS_NET_SCH(id)	MODULE_ALIAS("net-sch-" __stringify(id))
 void qdisc_get_default(char *id, size_t len);
 int qdisc_set_default(const char *id);
 
