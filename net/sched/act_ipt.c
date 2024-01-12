@@ -436,7 +436,6 @@ static struct pernet_operations xt_net_ops = {
 MODULE_AUTHOR("Jamal Hadi Salim(2002-13)");
 MODULE_DESCRIPTION("Iptables target actions");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("act_xt");
 
 static int __init ipt_init_module(void)
 {
