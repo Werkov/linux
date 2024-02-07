@@ -1337,6 +1337,7 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	 * Release all the links from cset_links to this hierarchy's
 	 * root cgroup
 	 */
+	down_write(&cgroup1_roots_sem);
 	spin_lock_irq(&css_set_lock);
 
 	list_for_each_entry_safe(link, tmp_link, &cgrp->cset_links, cset_link) {
@@ -1346,6 +1347,7 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	}
 
 	spin_unlock_irq(&css_set_lock);
+	up_write(&cgroup1_roots_sem);
 
 	WARN_ON_ONCE(list_empty(&root->root_list));
 	list_del_rcu(&root->root_list);
@@ -1377,7 +1379,12 @@ static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
 		res_cgroup = cset->dfl_cgrp;
 	} else {
 		struct cgrp_cset_link *link;
-		lockdep_assert_held(&css_set_lock);
+		/* cset's cgroups are pinned unless they are root cgroups that
+		 * were unmounted.  We look at links to !cgrp_dfl_root
+		 * cgroup_root.cgrp, either lock ensures the list is not mutated
+		 */
+		lockdep_assert(lockdep_is_held(&css_set_lock) ||
+			       lockdep_is_held(&cgroup1_roots_sem));
 
 		list_for_each_entry(link, &cset->cgrp_links, cgrp_link) {
 			struct cgroup *c = link->cgrp;
@@ -1390,7 +1397,8 @@ static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
 	}
 
 	/*
-	 * If cgroup_mutex is not held, the cgrp_cset_link will be freed
+	 * TODO reformulate the comment, res_cgroup may be NULL <=> `root` was free'd
+	 * If cgroup_mutex is not held, the cgrp_cset_link.cgrp may be freed
 	 * before we remove the cgroup root from the root_list. Consequently,
 	 * when accessing a cgroup root, the cset_link may have already been
 	 * freed, resulting in a NULL res_cgroup. However, by holding the
@@ -1411,7 +1419,6 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 	struct cgroup *res = NULL;
 	struct css_set *cset;
 
-	lockdep_assert_held(&css_set_lock);
 
 	rcu_read_lock();
 
@@ -1901,10 +1908,11 @@ int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 	if (!buf)
 		return -ENOMEM;
 
-	spin_lock_irq(&css_set_lock);
+	down_read(&cgroup1_roots_sem);
 	ns_cgroup = current_cgns_cgroup_from_root(kf_cgroot);
-	len = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, PATH_MAX);
-	spin_unlock_irq(&css_set_lock);
+	up_read(&cgroup1_roots_sem);
+	if (ns_cgroup) /* prudent check, to decouple us from namespace_sem */
+		len = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, PATH_MAX);
 
 	if (len == -E2BIG)
 		len = -ERANGE;
@@ -2135,6 +2143,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 	 * Link the root cgroup in this hierarchy into all the css_set
 	 * objects.
 	 */
+	down_write(&cgroup1_roots_sem);
 	spin_lock_irq(&css_set_lock);
 	hash_for_each(css_set_table, i, cset, hlist) {
 		link_css_set(&tmp_links, cset, root_cgrp);
@@ -2142,6 +2151,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 			cgroup_update_populated(root_cgrp, true);
 	}
 	spin_unlock_irq(&css_set_lock);
+	up_write(&cgroup1_roots_sem);
 
 	BUG_ON(!list_empty(&root_cgrp->self.children));
 	BUG_ON(atomic_read(&root->nr_cgrps) != 1);

@@ -1129,6 +1129,8 @@ struct kernfs_syscall_ops cgroup1_kf_syscall_ops = {
 	.rmdir			= cgroup_rmdir,
 	.show_path		= cgroup_show_path,
 };
+/* Separate lock for cgroup_show_path to be independent of css_set_lock */
+DECLARE_RWSEM(cgroup1_roots_sem);
 
 /*
  * The guts of cgroup1 mount - find or create cgroup_root to use.

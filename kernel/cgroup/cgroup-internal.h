@@ -283,6 +283,7 @@ extern const struct proc_ns_operations cgroupns_operations;
 extern struct cftype cgroup1_base_files[];
 extern struct kernfs_syscall_ops cgroup1_kf_syscall_ops;
 extern const struct fs_parameter_spec cgroup1_fs_parameters[];
+extern struct rw_semaphore cgroup1_roots_sem;
 
 int proc_cgroupstats_show(struct seq_file *m, void *v);
 bool cgroup1_ssid_disabled(int ssid);
