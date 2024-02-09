@@ -1539,6 +1539,12 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot)
 	return vma_fs_can_writeback(vma);
 }
 
+unsigned long get_mm_rss_precise(struct mm_struct *mm) {
+	return percpu_counter_sum(&mm->rss_stat[MM_FILEPAGES]) +
+		percpu_counter_sum(&mm->rss_stat[MM_ANONPAGES]) +
+		percpu_counter_sum(&mm->rss_stat[MM_SHMEMPAGES]);
+}
+
 /*
  * We account for memory if it's a private writeable mapping,
  * not hugepages and VM_NORESERVE wasn't set.

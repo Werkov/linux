@@ -2617,9 +2617,12 @@ static inline unsigned long get_mm_rss(struct mm_struct *mm)
 		get_mm_counter(mm, MM_SHMEMPAGES);
 }
 
+unsigned long get_mm_rss_precise(struct mm_struct *mm);
+
 static inline unsigned long get_mm_hiwater_rss(struct mm_struct *mm)
 {
-	return max(mm->hiwater_rss, get_mm_rss(mm));
+	unsigned long _rss = get_mm_rss_precise(mm);
+	return max(mm->hiwater_rss, _rss);
 }
 
 static inline unsigned long get_mm_hiwater_vm(struct mm_struct *mm)
