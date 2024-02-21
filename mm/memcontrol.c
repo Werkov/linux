@@ -7206,8 +7206,8 @@ static unsigned long effective_protection(unsigned long usage,
 		unclaimed = parent_effective - siblings_protected;
 		unclaimed *= usage - protected;
 		unclaimed /= parent_usage - siblings_protected;
-
-		ep += unclaimed;
+		/* Round to SWAP_CLUSTER_MAX to compensate overreclaim */
+		ep += (unclaimed / SWAP_CLUSTER_MAX) * SWAP_CLUSTER_MAX;
 	}
 
 	return ep;
