@@ -2457,7 +2457,7 @@ out:
 			/* memory.low scaling, make sure we retry before OOM */
 			if (!sc->memcg_low_reclaim && low > min) {
 				protection = low;
-				sc->memcg_low_skipped = 1;
+				sc->memcg_low_skipped = 1; /* not under protection but scaling due to protection */
 			} else {
 				protection = min;
 			}
@@ -3912,7 +3912,7 @@ static bool lruvec_is_reclaimable(struct lruvec *lruvec, struct scan_control *sc
 	if (!lruvec_is_sizable(lruvec, sc))
 		return false;
 
-	mem_cgroup_calculate_protection(NULL, memcg);
+	mem_cgroup_calculate_protection(NULL, memcg, sc->memcg_low_reclaim);
 
 	return !mem_cgroup_below_min(NULL, memcg);
 }
@@ -4745,7 +4745,7 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
-	mem_cgroup_calculate_protection(NULL, memcg);
+	mem_cgroup_calculate_protection(NULL, memcg, sc->memcg_low_reclaim);
 
 	if (mem_cgroup_below_min(NULL, memcg))
 		return MEMCG_LRU_YOUNG;
@@ -5835,7 +5835,7 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 		 */
 		cond_resched();
 
-		mem_cgroup_calculate_protection(target_memcg, memcg);
+		mem_cgroup_calculate_protection(target_memcg, memcg, sc->memcg_low_reclaim);
 
 		if (mem_cgroup_below_min(target_memcg, memcg)) {
 			/*

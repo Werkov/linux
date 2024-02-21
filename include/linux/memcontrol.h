@@ -630,7 +630,8 @@ static inline void mem_cgroup_protection(struct mem_cgroup *root,
 }
 
 void mem_cgroup_calculate_protection(struct mem_cgroup *root,
-				     struct mem_cgroup *memcg);
+				     struct mem_cgroup *memcg,
+				     bool low_reclaim);
 
 static inline bool mem_cgroup_unprotected(struct mem_cgroup *target,
 					  struct mem_cgroup *memcg)
@@ -1242,7 +1243,8 @@ static inline void mem_cgroup_protection(struct mem_cgroup *root,
 }
 
 static inline void mem_cgroup_calculate_protection(struct mem_cgroup *root,
-						   struct mem_cgroup *memcg)
+						   struct mem_cgroup *memcg,
+						   bool low_reclaim)
 {
 }
 

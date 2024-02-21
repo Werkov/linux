@@ -7144,7 +7144,8 @@ static unsigned long effective_protection(unsigned long usage,
 					  unsigned long parent_usage,
 					  unsigned long setting,
 					  unsigned long parent_effective,
-					  unsigned long siblings_protected)
+					  unsigned long siblings_protected,
+					  bool recurse)
 {
 	unsigned long protected;
 	unsigned long ep;
@@ -7196,7 +7197,7 @@ static unsigned long effective_protection(unsigned long usage,
 	 * protected values. One should imply the other, but they
 	 * aren't read atomically - make sure the division is sane.
 	 */
-	if (!(cgrp_dfl_root.flags & CGRP_ROOT_MEMORY_RECURSIVE_PROT))
+	if (!(cgrp_dfl_root.flags & CGRP_ROOT_MEMORY_RECURSIVE_PROT) || !recurse)
 		return ep;
 	if (parent_effective > siblings_protected &&
 	    parent_usage > siblings_protected &&
@@ -7220,9 +7221,12 @@ static unsigned long effective_protection(unsigned long usage,
  *
  * WARNING: This function is not stateless! It can only be used as part
  *          of a top-down tree iteration, not for isolated queries.
+ *          It skews effective values when more concurrent reclaims run with
+ *          ancestral roots.
  */
 void mem_cgroup_calculate_protection(struct mem_cgroup *root,
-				     struct mem_cgroup *memcg)
+				     struct mem_cgroup *memcg,
+				     bool low_reclaim)
 {
 	unsigned long usage, parent_usage;
 	struct mem_cgroup *parent;
@@ -7260,12 +7264,17 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 	WRITE_ONCE(memcg->memory.emin, effective_protection(usage, parent_usage,
 			READ_ONCE(memcg->memory.min),
 			READ_ONCE(parent->memory.emin),
-			atomic_long_read(&parent->memory.children_min_usage)));
+			atomic_long_read(&parent->memory.children_min_usage),
+			true));
 
+	/* Do not include resursive protection into elow when low is not honored
+	 * The amount of memory reclaimed during low_reclaim can be
+	 * redistributed siblings have lower memory.low configured. */
 	WRITE_ONCE(memcg->memory.elow, effective_protection(usage, parent_usage,
 			READ_ONCE(memcg->memory.low),
 			READ_ONCE(parent->memory.elow),
-			atomic_long_read(&parent->memory.children_low_usage)));
+			atomic_long_read(&parent->memory.children_low_usage),
+			!low_reclaim));
 }
 
 static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
