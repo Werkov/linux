@@ -2421,6 +2421,9 @@ out:
 		mem_cgroup_protection(sc->target_mem_cgroup, memcg,
 				      &min, &low);
 
+			unsigned long ocg, cgroup_size = mem_cgroup_size(memcg);
+			unsigned long protection = 0;
+			ocg = cgroup_size;
 		if (min || low) {
 			/*
 			 * Scale a cgroup's reclaim pressure by proportioning
@@ -2451,8 +2454,6 @@ out:
 			 * again by how much of the total memory used is under
 			 * hard protection.
 			 */
-			unsigned long cgroup_size = mem_cgroup_size(memcg);
-			unsigned long protection;
 
 			/* memory.low scaling, make sure we retry before OOM */
 			if (!sc->memcg_low_reclaim && low > min) {
@@ -2473,6 +2474,9 @@ out:
 		} else {
 			scan = lruvec_size;
 		}
+		trace_printk("memcg=%lu br=%u cs=%lu lru=%lu prot=%lu elow=%lu scan=%lu idx=%i tgt=%lu\n",
+				mem_cgroup_ino(memcg), sc->memcg_low_reclaim, ocg, lruvec_size,
+				protection, READ_ONCE(memcg->memory.elow), scan, lru, mem_cgroup_ino(sc->target_mem_cgroup));
 
 		scan >>= sc->priority;
 
@@ -5835,7 +5839,16 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 		 */
 		cond_resched();
 
+		unsigned long ocg = mem_cgroup_size(memcg);
+		trace_printk("memcg=%lu br=%u cs=%lu lru=%lu prot=%lu elow=%lu scan=%lu idx=%i tgt=%lu c=b\n",
+				mem_cgroup_ino(memcg), sc->memcg_low_reclaim, ocg, 0UL,
+				0UL, READ_ONCE(memcg->memory.elow), 0UL, 0UL, mem_cgroup_ino(sc->target_mem_cgroup));
 		mem_cgroup_calculate_protection(target_memcg, memcg, sc->memcg_low_reclaim);
+		ocg = mem_cgroup_size(memcg);
+
+		trace_printk("memcg=%lu br=%u cs=%lu lru=%lu prot=%lu elow=%lu scan=%lu idx=%i tgt=%lu c=a\n",
+				mem_cgroup_ino(memcg), sc->memcg_low_reclaim, ocg, 0UL,
+				0UL, READ_ONCE(memcg->memory.elow), 0UL, 0UL, mem_cgroup_ino(sc->target_mem_cgroup));
 
 		if (mem_cgroup_below_min(target_memcg, memcg)) {
 			/*
