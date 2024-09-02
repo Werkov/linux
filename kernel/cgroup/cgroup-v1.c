@@ -28,7 +28,7 @@
 
 /* Controllers blocked in v1 */
 static u16 cgroup_no_v1_mask = 0
-#if defined(CONFIG_CPUSET) && !defined(CONFIG_CPUSET_V1)
+#if defined(CONFIG_CPUSETS) && !defined(CONFIG_CPUSETS_V1)
 	| (1 << cpuset_cgrp_id)
 #endif
 #if defined(CONFIG_MEMCG) && !defined(CONFIG_MEMCG_V1)
