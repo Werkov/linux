@@ -26,8 +26,15 @@
  */
 #define CGROUP_PIDLIST_DESTROY_DELAY	HZ
 
-/* Controllers blocked by the commandline in v1 */
-static u16 cgroup_no_v1_mask;
+/* Controllers blocked in v1 */
+static u16 cgroup_no_v1_mask = 0
+#if defined(CONFIG_CPUSET) && !defined(CONFIG_CPUSET_V1)
+	| (1 << cpuset_cgrp_id)
+#endif
+#if defined(CONFIG_MEMCG) && !defined(CONFIG_MEMCG_V1)
+	| (1 << memory_cgrp_id)
+#endif
+;
 
 /* disable named v1 mounts */
 static bool cgroup_no_v1_named;
