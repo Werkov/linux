@@ -102,10 +102,10 @@ extern int cpuset_mems_allowed_intersects(const struct task_struct *tsk1,
 #ifdef CONFIG_CPUSETS_V1
 #define cpuset_memory_pressure_bump() 				\
 	do {							\
-		if (cpuset_memory_pressure_enabled)		\
+		if (cpuset1_memory_pressure_enabled)		\
 			__cpuset_memory_pressure_bump();	\
 	} while (0)
-extern int cpuset_memory_pressure_enabled;
+extern int cpuset1_memory_pressure_enabled;
 extern void __cpuset_memory_pressure_bump(void);
 #else
 static inline void cpuset_memory_pressure_bump(void) { }

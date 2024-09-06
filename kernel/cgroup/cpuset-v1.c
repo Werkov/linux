@@ -11,6 +11,14 @@ struct cpuset_remove_tasks_struct {
 };
 
 /*
+ * Collection of memory_pressure is suppressed unless
+ * this flag is enabled by writing "1" to the special
+ * cpuset file 'memory_pressure_enabled' in the root cpuset.
+ */
+
+int cpuset1_memory_pressure_enabled __read_mostly;
+
+/*
  * Frequency meter - How fast is some event occurring?
  *
  * These routines manage a digitally filtered, constant time based,
@@ -110,14 +118,6 @@ static int fmeter_getrate(struct fmeter *fmp)
 	spin_unlock(&fmp->lock);
 	return val;
 }
-
-/*
- * Collection of memory_pressure is suppressed unless
- * this flag is enabled by writing "1" to the special
- * cpuset file 'memory_pressure_enabled' in the root cpuset.
- */
-
-int cpuset_memory_pressure_enabled __read_mostly;
 
 /*
  * __cpuset_memory_pressure_bump - keep stats of per-cpuset reclaims.
@@ -390,7 +390,7 @@ static u64 cpuset_read_u64(struct cgroup_subsys_state *css, struct cftype *cft)
 	case FILE_MEMORY_MIGRATE:
 		return is_memory_migrate(cs);
 	case FILE_MEMORY_PRESSURE_ENABLED:
-		return cpuset_memory_pressure_enabled;
+		return cpuset1_memory_pressure_enabled;
 	case FILE_MEMORY_PRESSURE:
 		return fmeter_getrate(&cs->fmeter);
 	case FILE_SPREAD_PAGE:
@@ -436,7 +436,7 @@ static int cpuset_write_u64(struct cgroup_subsys_state *css, struct cftype *cft,
 		retval = cpuset_update_flag(CS_MEMORY_MIGRATE, cs, val);
 		break;
 	case FILE_MEMORY_PRESSURE_ENABLED:
-		cpuset_memory_pressure_enabled = !!val;
+		cpuset1_memory_pressure_enabled = !!val;
 		break;
 	case FILE_SPREAD_PAGE:
 		retval = cpuset_update_flag(CS_SPREAD_PAGE, cs, val);
