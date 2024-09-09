@@ -11,12 +11,29 @@ struct cpuset_remove_tasks_struct {
 };
 
 /*
+ * Migrate memory region from one set of nodes to another.  This is
+ * performed asynchronously as it can be called from process migration path
+ * holding locks involved in process management.  All mm migrations are
+ * performed in the queued order and can be waited for by flushing
+ * cpuset_migrate_mm_wq.
+ */
+
+struct cpuset_migrate_mm_work {
+	struct work_struct	work;
+	struct mm_struct	*mm;
+	nodemask_t		from;
+	nodemask_t		to;
+};
+
+/*
  * Collection of memory_pressure is suppressed unless
  * this flag is enabled by writing "1" to the special
  * cpuset file 'memory_pressure_enabled' in the root cpuset.
  */
 
 int cpuset1_memory_pressure_enabled __read_mostly;
+
+static struct workqueue_struct *cpuset_migrate_mm_wq;
 
 /*
  * Frequency meter - How fast is some event occurring?
@@ -371,6 +388,44 @@ int cpuset1_validate_change(struct cpuset *cur, struct cpuset *trial)
 	ret = 0;
 out:
 	return ret;
+}
+
+static void cpuset_migrate_mm_workfn(struct work_struct *work)
+{
+	struct cpuset_migrate_mm_work *mwork =
+		container_of(work, struct cpuset_migrate_mm_work, work);
+
+	/* on a wq worker, no need to worry about %current's mems_allowed */
+	do_migrate_pages(mwork->mm, &mwork->from, &mwork->to, MPOL_MF_MOVE_ALL);
+	mmput(mwork->mm);
+	kfree(mwork);
+}
+
+static void cpuset_migrate_mm(struct mm_struct *mm, const nodemask_t *from,
+							const nodemask_t *to)
+{
+	struct cpuset_migrate_mm_work *mwork;
+
+	if (nodes_equal(*from, *to)) {
+		mmput(mm);
+		return;
+	}
+
+	mwork = kzalloc(sizeof(*mwork), GFP_KERNEL);
+	if (mwork) {
+		mwork->mm = mm;
+		mwork->from = *from;
+		mwork->to = *to;
+		INIT_WORK(&mwork->work, cpuset_migrate_mm_workfn);
+		queue_work(cpuset_migrate_mm_wq, &mwork->work);
+	} else {
+		mmput(mm);
+	}
+}
+
+void cpuset1_post_attach(void)
+{
+	flush_workqueue(cpuset_migrate_mm_wq);
 }
 
 static u64 cpuset_read_u64(struct cgroup_subsys_state *css, struct cftype *cft)

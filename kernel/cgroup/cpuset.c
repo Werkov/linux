@@ -248,8 +248,6 @@ void cpuset_callback_unlock_irq(void)
 	spin_unlock_irq(&callback_lock);
 }
 
-static struct workqueue_struct *cpuset_migrate_mm_wq;
-
 static DECLARE_WAIT_QUEUE_HEAD(cpuset_attach_wq);
 
 static inline void check_insane_mems_config(nodemask_t *nodes)
@@ -2423,59 +2421,6 @@ static int update_exclusive_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 }
 
 /*
- * Migrate memory region from one set of nodes to another.  This is
- * performed asynchronously as it can be called from process migration path
- * holding locks involved in process management.  All mm migrations are
- * performed in the queued order and can be waited for by flushing
- * cpuset_migrate_mm_wq.
- */
-
-struct cpuset_migrate_mm_work {
-	struct work_struct	work;
-	struct mm_struct	*mm;
-	nodemask_t		from;
-	nodemask_t		to;
-};
-
-static void cpuset_migrate_mm_workfn(struct work_struct *work)
-{
-	struct cpuset_migrate_mm_work *mwork =
-		container_of(work, struct cpuset_migrate_mm_work, work);
-
-	/* on a wq worker, no need to worry about %current's mems_allowed */
-	do_migrate_pages(mwork->mm, &mwork->from, &mwork->to, MPOL_MF_MOVE_ALL);
-	mmput(mwork->mm);
-	kfree(mwork);
-}
-
-static void cpuset_migrate_mm(struct mm_struct *mm, const nodemask_t *from,
-							const nodemask_t *to)
-{
-	struct cpuset_migrate_mm_work *mwork;
-
-	if (nodes_equal(*from, *to)) {
-		mmput(mm);
-		return;
-	}
-
-	mwork = kzalloc(sizeof(*mwork), GFP_KERNEL);
-	if (mwork) {
-		mwork->mm = mm;
-		mwork->from = *from;
-		mwork->to = *to;
-		INIT_WORK(&mwork->work, cpuset_migrate_mm_workfn);
-		queue_work(cpuset_migrate_mm_wq, &mwork->work);
-	} else {
-		mmput(mm);
-	}
-}
-
-static void cpuset_post_attach(void)
-{
-	flush_workqueue(cpuset_migrate_mm_wq);
-}
-
-/*
  * cpuset_change_task_nodemask - change task's mems_allowed and mempolicy
  * @tsk: the task to change
  * @newmems: new nodes that the task will be set
@@ -3617,12 +3562,12 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
 	.can_attach	= cpuset_can_attach,
 	.cancel_attach	= cpuset_cancel_attach,
 	.attach		= cpuset_attach,
-	.post_attach	= cpuset_post_attach,
 	.bind		= cpuset_bind,
 	.can_fork	= cpuset_can_fork,
 	.cancel_fork	= cpuset_cancel_fork,
 	.fork		= cpuset_fork,
 #ifdef CONFIG_CPUSETS_V1
+	.post_attach	= cpuset1_post_attach,
 	.legacy_cftypes	= cpuset1_files,
 #endif
 	.dfl_cftypes	= dfl_files,
