@@ -206,14 +206,15 @@ static s64 cpuset_read_s64(struct cgroup_subsys_state *css, struct cftype *cft)
 /*
  * update task's spread flag if cpuset's page/slab spread flag is set
  *
- * Call with callback_lock or cpuset_mutex held. The check can be skipped
- * if on default hierarchy.
+ * The check can be skipped if on default hierarchy.
  */
 void cpuset1_update_task_spread_flags(struct cpuset *cs,
 					struct task_struct *tsk)
 {
 	if (cgroup_subsys_on_dfl(cpuset_cgrp_subsys))
 		return;
+
+	lockdep_assert(lockdep_is_held(&cpuset_mutex) || lockdep_is_held(&callback_lock));
 
 	if (is_spread_page(cs))
 		task_set_spread_page(tsk);
@@ -230,14 +231,14 @@ void cpuset1_update_task_spread_flags(struct cpuset *cs,
  * cpuset1_update_tasks_flags - update the spread flags of tasks in the cpuset.
  * @cs: the cpuset in which each task's spread flags needs to be changed
  *
- * Iterate through each task of @cs updating its spread flags.  As this
- * function is called with cpuset_mutex held, cpuset membership stays
- * stable.
- */
+ * Iterate through each task of @cs updating its spread flags. */
 void cpuset1_update_tasks_flags(struct cpuset *cs)
 {
 	struct css_task_iter it;
 	struct task_struct *task;
+
+	/* cpuset membership stays stable */
+	lockdep_assert_held(&cpuset_mutex);
 
 	css_task_iter_start(&cs->css, 0, &it);
 	while ((task = css_task_iter_next(&it)))
@@ -333,11 +334,12 @@ void cpuset1_hotplug_update_tasks(struct cpuset *cs,
  *
  * One cpuset is a subset of another if all its allowed CPUs and
  * Memory Nodes are a subset of the other, and its exclusive flags
- * are only set if the other's are set.  Call holding cpuset_mutex.
+ * are only set if the other's are set.
  */
 
 static int is_cpuset_subset(const struct cpuset *p, const struct cpuset *q)
 {
+	lockdep_assert_held(&cpuset_mutex);
 	return	cpumask_subset(p->cpus_allowed, q->cpus_allowed) &&
 		nodes_subset(p->mems_allowed, q->mems_allowed) &&
 		is_cpu_exclusive(p) <= is_cpu_exclusive(q) &&

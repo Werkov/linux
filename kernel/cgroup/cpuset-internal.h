@@ -182,6 +182,11 @@ struct cpuset {
 	struct uf_node node;
 };
 
+#ifdef CONFIG_LOCKDEP
+extern struct mutex cpuset_mutex;
+extern spinlock_t callback_lock;
+#endif
+
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct cpuset, css) : NULL;

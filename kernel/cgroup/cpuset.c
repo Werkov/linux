@@ -224,7 +224,13 @@ static struct cpuset top_cpuset = {
  * guidelines for accessing subsystem state in kernel/cgroup.c
  */
 
+#ifdef CONFIG_LOCKDEP
+DEFINE_MUTEX(cpuset_mutex);
+DEFINE_SPINLOCK(callback_lock);
+#else
 static DEFINE_MUTEX(cpuset_mutex);
+static DEFINE_SPINLOCK(callback_lock);
+#endif
 
 void cpuset_lock(void)
 {
@@ -235,8 +241,6 @@ void cpuset_unlock(void)
 {
 	mutex_unlock(&cpuset_mutex);
 }
-
-static DEFINE_SPINLOCK(callback_lock);
 
 void cpuset_callback_lock_irq(void)
 {
