@@ -340,14 +340,14 @@ static inline bool partition_is_populated(struct cpuset *cs,
  *
  * One way or another, we guarantee to return some non-empty subset
  * of cpu_online_mask.
- *
- * Call with callback_lock or cpuset_mutex held.
  */
 static void guarantee_online_cpus(struct task_struct *tsk,
 				  struct cpumask *pmask)
 {
 	const struct cpumask *possible_mask = task_cpu_possible_mask(tsk);
 	struct cpuset *cs;
+
+	lockdep_assert(lockdep_is_held(&cpuset_mutex) || lockdep_is_held(&callback_lock));
 
 	if (WARN_ON(!cpumask_and(pmask, possible_mask, cpu_online_mask)))
 		cpumask_copy(pmask, cpu_online_mask);
@@ -370,11 +370,11 @@ static void guarantee_online_cpus(struct task_struct *tsk,
  *
  * One way or another, we guarantee to return some non-empty subset
  * of node_states[N_MEMORY].
- *
- * Call with callback_lock or cpuset_mutex held.
  */
 static void guarantee_online_mems(struct cpuset *cs, nodemask_t *pmask)
 {
+	lockdep_assert(lockdep_is_held(&cpuset_mutex) || lockdep_is_held(&callback_lock));
+
 	while (!nodes_intersects(cs->effective_mems, node_states[N_MEMORY]))
 		cs = parent_cs(cs);
 	nodes_and(*pmask, cs->effective_mems, node_states[N_MEMORY]);
@@ -516,8 +516,7 @@ static inline bool cpusets_are_exclusive(struct cpuset *cs1, struct cpuset *cs2)
  *
  * If we replaced the flag and mask values of the current cpuset
  * (cur) with those values in the trial cpuset (trial), would
- * our various subset and exclusive rules still be valid?  Presumes
- * cpuset_mutex held.
+ * our various subset and exclusive rules still be valid?
  *
  * 'cur' is the address of an actual, in-use cpuset.  Operations
  * such as list traversal that depend on the actual address of the
@@ -535,6 +534,8 @@ static int validate_change(struct cpuset *cur, struct cpuset *trial)
 	struct cgroup_subsys_state *css;
 	struct cpuset *c, *par;
 	int ret = 0;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	rcu_read_lock();
 
@@ -658,9 +659,9 @@ static void update_domain_attr_tree(struct sched_domain_attr *dattr,
 	rcu_read_unlock();
 }
 
-/* Must be called with cpuset_mutex held.  */
 static inline int nr_cpusets(void)
 {
+	lockdep_assert_held(&cpuset_mutex);
 	/* jump label reference count + the top-level cpuset */
 	return static_key_count(&cpusets_enabled_key.key) + 1;
 }
@@ -683,8 +684,6 @@ static inline int nr_cpusets(void)
  * routine would rather not worry about failures to rebuild sched
  * domains when operating in the severe memory shortage situations
  * that could cause allocation failures below.
- *
- * Must be called with cpuset_mutex held.
  *
  * The three key local variables below are:
  *    cp - cpuset pointer, used (together with pos_css) to perform a
@@ -730,6 +729,8 @@ static int generate_sched_domains(cpumask_var_t **domains,
 	bool root_load_balance = is_sched_load_balance(&top_cpuset);
 	bool cgrpv2 = cgroup_subsys_on_dfl(cpuset_cgrp_subsys);
 	int nslot_update;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	doms = NULL;
 	dattr = NULL;
@@ -1343,12 +1344,14 @@ static inline bool is_local_partition(struct cpuset *cs)
  * Return: 0 if successful, errcode if error
  *
  * Enable the current cpuset to become a remote partition root taking CPUs
- * directly from the top cpuset. cpuset_mutex must be held by the caller.
+ * directly from the top cpuset.
  */
 static int remote_partition_enable(struct cpuset *cs, int new_prs,
 				   struct tmpmasks *tmp)
 {
 	bool isolcpus_updated;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	/*
 	 * The user must have sysadmin privilege.
@@ -1390,12 +1393,12 @@ static int remote_partition_enable(struct cpuset *cs, int new_prs,
  * @tmp: temparary masks
  *
  * The effective_cpus is also updated.
- *
- * cpuset_mutex must be held by the caller.
  */
 static void remote_partition_disable(struct cpuset *cs, struct tmpmasks *tmp)
 {
 	bool isolcpus_updated;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	compute_effective_exclusive_cpumask(cs, tmp->new_cpus);
 	WARN_ON_ONCE(!is_remote_partition(cs));
@@ -1938,8 +1941,6 @@ static void compute_partition_effective_cpumask(struct cpuset *cs,
  * and all its descendants need to be updated.
  *
  * On legacy hierarchy, effective_cpus will be the same with cpu_allowed.
- *
- * Called with cpuset_mutex held
  */
 static void update_cpumasks_hier(struct cpuset *cs, struct tmpmasks *tmp,
 				 int flags)
@@ -1948,6 +1949,8 @@ static void update_cpumasks_hier(struct cpuset *cs, struct tmpmasks *tmp,
 	struct cgroup_subsys_state *pos_css;
 	bool need_rebuild_sched_domains = false;
 	int old_prs, new_prs;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	rcu_read_lock();
 	cpuset_for_each_descendant_pre(cp, pos_css, cs) {
@@ -2519,6 +2522,8 @@ void cpuset_update_tasks_nodemask(struct cpuset *cs)
 	struct css_task_iter it;
 	struct task_struct *task;
 
+	lockdep_assert_held(&cpuset_mutex);
+
 	cpuset_being_rebound = cs;		/* causes mpol_dup() rebind */
 
 	guarantee_online_mems(cs, &newmems);
@@ -2573,13 +2578,13 @@ void cpuset_update_tasks_nodemask(struct cpuset *cs)
  * and all its descendants need to be updated.
  *
  * On legacy hierarchy, effective_mems will be the same with mems_allowed.
- *
- * Called with cpuset_mutex held
  */
 static void update_nodemasks_hier(struct cpuset *cs, nodemask_t *new_mems)
 {
 	struct cpuset *cp;
 	struct cgroup_subsys_state *pos_css;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	rcu_read_lock();
 	cpuset_for_each_descendant_pre(cp, pos_css, cs) {
@@ -2627,7 +2632,7 @@ static void update_nodemasks_hier(struct cpuset *cs, nodemask_t *new_mems)
  * mempolicies and if the cpuset is marked 'memory_migrate',
  * migrate the tasks pages to the new memory.
  *
- * Call with cpuset_mutex held. May take callback_lock during call.
+ * May take callback_lock during call.
  * Will take tasklist_lock, scan tasklist for tasks in cpuset cs,
  * lock each such tasks mm->mmap_lock, scan its vma's and rebind
  * their mempolicies to the cpusets new mems_allowed.
@@ -2636,6 +2641,8 @@ static int update_nodemask(struct cpuset *cs, struct cpuset *trialcs,
 			   const char *buf)
 {
 	int retval;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	/*
 	 * top_cpuset.mems_allowed tracks node_stats[N_MEMORY];
@@ -2702,8 +2709,6 @@ bool current_cpuset_is_being_rebound(void)
  * bit:		the bit to update (see cpuset_flagbits_t)
  * cs:		the cpuset to update
  * turning_on: 	whether the flag is being set or cleared
- *
- * Call with cpuset_mutex held.
  */
 
 int cpuset_update_flag(cpuset_flagbits_t bit, struct cpuset *cs,
@@ -2713,6 +2718,8 @@ int cpuset_update_flag(cpuset_flagbits_t bit, struct cpuset *cs,
 	int balance_flag_changed;
 	int spread_flag_changed;
 	int err;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	trialcs = alloc_trial_cpuset(cs);
 	if (!trialcs)
@@ -2753,8 +2760,6 @@ out:
  * @cs: the cpuset to update
  * @new_prs: new partition root state
  * Return: 0 if successful, != 0 if error
- *
- * Call with cpuset_mutex held.
  */
 static int update_prstate(struct cpuset *cs, int new_prs)
 {
@@ -2762,6 +2767,8 @@ static int update_prstate(struct cpuset *cs, int new_prs)
 	struct cpuset *parent = parent_cs(cs);
 	struct tmpmasks tmpmask;
 	bool new_xcpus_state = false;
+
+	lockdep_assert_held(&cpuset_mutex);
 
 	if (old_prs == new_prs)
 		return 0;
@@ -2885,7 +2892,7 @@ static void reset_migrate_dl_data(struct cpuset *cs)
 	cs->sum_migrate_dl_bw = 0;
 }
 
-/* Called by cgroups to determine if a cpuset is usable; cpuset_mutex held */
+/* Called by cgroups to determine if a cpuset is usable */
 static int cpuset_can_attach(struct cgroup_taskset *tset)
 {
 	struct cgroup_subsys_state *css;
