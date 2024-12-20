@@ -1,9 +1,10 @@
-#include <asm/livedump.h>
 #include <asm/apic.h>
+#include <asm/livedump.h>
+#include <asm/nmi.h>
 
+#include <linux/delay.h>
 #include <linux/livedump.h>
 #include <linux/nmi.h>
-#include <linux/delay.h>
 
 static atomic_t nmi_handled;
 
