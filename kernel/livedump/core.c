@@ -26,9 +26,6 @@
 #include "trace.h"
 
 #include <asm/wrprotect.h>
-#ifdef CONFIG_X86
-#include <asm/nmi.h>
-#endif
 
 #include <linux/log2.h>
 #include <linux/cpu.h>
