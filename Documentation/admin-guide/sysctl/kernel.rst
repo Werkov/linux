@@ -1043,6 +1043,10 @@ The last pid allocated in the current (the one task using this sysctl
 lives in) pid namespace. When selecting a pid for a next task on fork
 kernel tries to allocate a number starting from this one.
 
+When set to -1, first-fit pid numbering is used instead of the next-fit. Why
+such numbering? It ensures that the largest pid number is limited by allowed
+number of tasks (useful e.g. for 32-bit userspace with pids controller limit).
+
 
 powersave-nap (PPC only)
 ========================
