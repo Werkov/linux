@@ -227,6 +227,7 @@ struct kernfs_node {
 	void			*priv;
 	struct kernfs_iattrs	*iattr;
 
+	struct rcu_head		active_rcu;
 	struct rcu_head		rcu;
 };
 

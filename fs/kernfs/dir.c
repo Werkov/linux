@@ -481,8 +481,6 @@ void kernfs_put_active(struct kernfs_node *kn)
  * return after draining is complete.
  */
 static void kernfs_drain(struct kernfs_node *kn)
-	__releases(&kernfs_root(kn)->kernfs_rwsem)
-	__acquires(&kernfs_root(kn)->kernfs_rwsem)
 {
 	struct kernfs_root *root = kernfs_root(kn);
 
@@ -498,15 +496,8 @@ static void kernfs_drain(struct kernfs_node *kn)
 	if (!kernfs_active(kn) && !kernfs_should_drain_open_files(kn))
 		return;
 
-	up_write(&root->kernfs_rwsem);
-
-	synchronize_rcu();
-	/* Anyone who saw an active reference, has put it by now */
-
 	if (kernfs_should_drain_open_files(kn))
-		kernfs_drain_open_files(kn);
-
-	down_write(&root->kernfs_rwsem);
+		call_rcu(&kn->active_rcu, kernfs_drain_open_files_rcu);
 }
 
 /**
@@ -1617,7 +1608,7 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	struct kernfs_root *root = kernfs_root(kn);
 
 	down_write(&root->kernfs_rwsem);
-	kernfs_break_active_protection(kn);
+	kernfs_break_active_protection(kn); // XXX is it needed?
 
 	/*
 	 * SUICIDAL is used to arbitrate among competing invocations.  Only
@@ -1630,24 +1621,15 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	 */
 	if (!(kn->flags & KERNFS_SUICIDAL)) {
 		kn->flags |= KERNFS_SUICIDAL;
-		__kernfs_remove(kn); // releases/acquires root->kernfs_rwsem
+		__kernfs_remove(kn);
 		kn->flags |= KERNFS_SUICIDED;
 		ret = true;
 	} else {
-		up_write(&root->kernfs_rwsem);
-		synchronize_rcu();
-		/* SUICIDAL caller above will have to wait
-		   for holders of active reference past RCU grace period, so by
-		   synchronize_rcu we also wait for finishing the suicidium.
-		   Beware that it doesn't mean we'd see
-		   (kn->flags & KERNFS_SUICIDED) 
-		   or
-		   RB_EMPTY_NODE(&kn->rb)
-		   here
-		   XXX removal completion might be handy here */
-		down_write(&root->kernfs_rwsem);
+		/* We're serialized via kernfs_rwsem here, if we got here
+		   it means all work is done */
 
 		WARN_ON_ONCE(!RB_EMPTY_NODE(&kn->rb));
+		WARN_ON_ONCE(!(kn->flags & KERNFS_SUICIDED));
 		ret = false;
 	}
 
@@ -1655,7 +1637,7 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	 * This must be done while kernfs_rwsem held exclusive; otherwise,
 	 * waiting for SUICIDED && deactivated could finish prematurely.
 	 */
-	kernfs_unbreak_active_protection(kn);
+	kernfs_unbreak_active_protection(kn); // XXX is it needed?
 
 	up_write(&root->kernfs_rwsem);
 	return ret;

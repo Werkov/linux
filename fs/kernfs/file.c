@@ -787,13 +787,13 @@ bool kernfs_should_drain_open_files(struct kernfs_node *kn)
 	return ret;
 }
 
-void kernfs_drain_open_files(struct kernfs_node *kn)
+static void kernfs_drain_open_files(struct kernfs_node *kn)
 {
 	struct kernfs_open_node *on;
 	struct kernfs_open_file *of;
 	struct mutex *mutex;
 
-	mutex = kernfs_open_file_mutex_lock(kn);
+	mutex = kernfs_open_file_mutex_lock(kn); // XXX this is a problem for RCU callback
 	on = kernfs_deref_open_node_locked(kn);
 	if (!on) {
 		mutex_unlock(mutex);
@@ -815,6 +815,12 @@ void kernfs_drain_open_files(struct kernfs_node *kn)
 
 	WARN_ON_ONCE(on->nr_mmapped || on->nr_to_release);
 	mutex_unlock(mutex);
+}
+
+void kernfs_drain_open_files_rcu(struct rcu_head *rcu)
+{
+	struct kernfs_node *kn = container_of(rcu, struct kernfs_node, active_rcu);
+	kernfs_drain_open_files(kn);
 }
 
 /*
