@@ -47,16 +47,12 @@ struct kernfs_root {
 	/* list of kernfs_super_info of this root, protected by kernfs_rwsem */
 	struct list_head	supers;
 
-	wait_queue_head_t	deactivate_waitq;
 	struct rw_semaphore	kernfs_rwsem;
 	struct rw_semaphore	kernfs_iattr_rwsem;
 	struct rw_semaphore	kernfs_supers_rwsem;
 
 	struct rcu_head		rcu;
 };
-
-/* +1 to avoid triggering overflow warning when negating it */
-#define KN_DEACTIVATED_BIAS		(INT_MIN + 1)
 
 /* KERNFS_TYPE_MASK and types are defined in include/linux/kernfs.h */
 

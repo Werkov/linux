@@ -105,8 +105,6 @@ static struct kernfs_open_file *kernfs_of(struct file *file)
  */
 static const struct kernfs_ops *kernfs_ops(struct kernfs_node *kn)
 {
-	if (kn->flags & KERNFS_LOCKDEP)
-		lockdep_assert_held(kn);
 	return kn->attr.ops;
 }
 
@@ -779,7 +777,7 @@ bool kernfs_should_drain_open_files(struct kernfs_node *kn)
 	 * @kn being deactivated guarantees that @kn->attr.open can't change
 	 * beneath us making the lockless test below safe.
 	 */
-	WARN_ON_ONCE(atomic_read(&kn->active) != KN_DEACTIVATED_BIAS);
+	WARN_ON_ONCE(kn->active);
 
 	rcu_read_lock();
 	on = rcu_dereference(kn->attr.open);
@@ -1044,13 +1042,6 @@ struct kernfs_node *__kernfs_create_file(struct kernfs_node *parent,
 	kn->attr.size = size;
 	kn->ns = ns;
 	kn->priv = priv;
-
-#ifdef CONFIG_DEBUG_LOCK_ALLOC
-	if (key) {
-		lockdep_init_map(&kn->dep_map, "kn->active", key, 0);
-		kn->flags |= KERNFS_LOCKDEP;
-	}
-#endif
 
 	/*
 	 * kn->attr.ops is accessible only while holding active ref.  We

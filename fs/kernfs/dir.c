@@ -33,7 +33,7 @@ static DEFINE_SPINLOCK(kernfs_idr_lock);	/* root->ino_idr */
 
 static bool __kernfs_active(struct kernfs_node *kn)
 {
-	return atomic_read(&kn->active) >= 0;
+	return kn->active;
 }
 
 static bool kernfs_active(struct kernfs_node *kn)
@@ -447,11 +447,12 @@ struct kernfs_node *kernfs_get_active(struct kernfs_node *kn)
 	if (unlikely(!kn))
 		return NULL;
 
-	if (!atomic_inc_unless_negative(&kn->active))
+	rcu_read_lock();
+	if (!kn->active) { // rcu_dereference_pointer
+		rcu_read_unlock();
 		return NULL;
+	}
 
-	if (kernfs_lockdep(kn))
-		rwsem_acquire_read(&kn->dep_map, 0, 1, _RET_IP_);
 	return kn;
 }
 
@@ -464,18 +465,11 @@ struct kernfs_node *kernfs_get_active(struct kernfs_node *kn)
  */
 void kernfs_put_active(struct kernfs_node *kn)
 {
-	int v;
-
 	if (unlikely(!kn))
 		return;
 
-	if (kernfs_lockdep(kn))
-		rwsem_release(&kn->dep_map, _RET_IP_);
-	v = atomic_dec_return(&kn->active);
-	if (likely(v != KN_DEACTIVATED_BIAS))
-		return;
-
-	wake_up_all(&kernfs_root(kn)->deactivate_waitq);
+	WARN_ON_ONCE(!rcu_read_lock_held());
+	rcu_read_unlock();
 }
 
 /**
@@ -501,25 +495,13 @@ static void kernfs_drain(struct kernfs_node *kn)
 	 * allowing embedding kernfs_remove() in create error paths without
 	 * worrying about draining.
 	 */
-	if (atomic_read(&kn->active) == KN_DEACTIVATED_BIAS &&
-	    !kernfs_should_drain_open_files(kn))
+	if (!kernfs_active(kn) && !kernfs_should_drain_open_files(kn))
 		return;
 
 	up_write(&root->kernfs_rwsem);
 
-	if (kernfs_lockdep(kn)) {
-		rwsem_acquire(&kn->dep_map, 0, 0, _RET_IP_);
-		if (atomic_read(&kn->active) != KN_DEACTIVATED_BIAS)
-			lock_contended(&kn->dep_map, _RET_IP_);
-	}
-
-	wait_event(root->deactivate_waitq,
-		   atomic_read(&kn->active) == KN_DEACTIVATED_BIAS);
-
-	if (kernfs_lockdep(kn)) {
-		lock_acquired(&kn->dep_map, _RET_IP_);
-		rwsem_release(&kn->dep_map, _RET_IP_);
-	}
+	synchronize_rcu();
+	/* Anyone who saw an active reference, has put it by now */
 
 	if (kernfs_should_drain_open_files(kn))
 		kernfs_drain_open_files(kn);
@@ -576,10 +558,10 @@ void kernfs_put(struct kernfs_node *kn)
 	 */
 	parent = kernfs_parent(kn);
 
-	WARN_ONCE(atomic_read(&kn->active) != KN_DEACTIVATED_BIAS,
-		  "kernfs_put: %s/%s: released with incorrect active_ref %d\n",
+	WARN_ONCE(kn->active,
+		  "kernfs_put: %s/%s: released while active\n",
 		  parent ? rcu_dereference(parent->name) : "",
-		  rcu_dereference(kn->name), atomic_read(&kn->active));
+		  rcu_dereference(kn->name));
 
 	if (kernfs_type(kn) == KERNFS_LINK)
 		kernfs_put(kn->symlink.target_kn);
@@ -653,7 +635,6 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	kn->id = (u64)id_highbits << 32 | ret;
 
 	atomic_set(&kn->count, 1);
-	atomic_set(&kn->active, KN_DEACTIVATED_BIAS);
 	RB_CLEAR_NODE(&kn->rb);
 
 	rcu_assign_pointer(kn->name, name);
@@ -1020,7 +1001,6 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 	root->syscall_ops = scops;
 	root->flags = flags;
 	root->kn = kn;
-	init_waitqueue_head(&root->deactivate_waitq);
 
 	if (!(root->flags & KERNFS_ROOT_CREATE_DEACTIVATED))
 		kernfs_activate(kn);
@@ -1397,9 +1377,9 @@ static void kernfs_activate_one(struct kernfs_node *kn)
 		return;
 
 	WARN_ON_ONCE(rcu_access_pointer(kn->__parent) && RB_EMPTY_NODE(&kn->rb));
-	WARN_ON_ONCE(atomic_read(&kn->active) != KN_DEACTIVATED_BIAS);
+	WARN_ON_ONCE(kn->active);
 
-	atomic_sub(KN_DEACTIVATED_BIAS, &kn->active);
+	kn->active = true;
 }
 
 /**
@@ -1457,7 +1437,7 @@ void kernfs_show(struct kernfs_node *kn, bool show)
 	} else {
 		kn->flags |= KERNFS_HIDDEN;
 		if (kernfs_active(kn))
-			atomic_add(KN_DEACTIVATED_BIAS, &kn->active);
+			kn->active = false; // rcu_assign_pointer
 		kernfs_drain(kn);
 	}
 
@@ -1488,7 +1468,7 @@ static void __kernfs_remove(struct kernfs_node *kn)
 	while ((pos = kernfs_next_descendant_post(pos, kn))) {
 		pos->flags |= KERNFS_REMOVING;
 		if (kernfs_active(pos))
-			atomic_add(KN_DEACTIVATED_BIAS, &pos->active);
+			pos->active = false;
 	}
 
 	/* deactivate and unlink the subtree node-by-node */
@@ -1598,9 +1578,9 @@ void kernfs_unbreak_active_protection(struct kernfs_node *kn)
 	 * deactivated state.  If @kn is already removed, the temporary
 	 * bump is guaranteed to be gone before @kn is released.
 	 */
-	atomic_inc(&kn->active);
-	if (kernfs_lockdep(kn))
-		rwsem_acquire(&kn->dep_map, 0, 1, _RET_IP_);
+	rcu_read_lock();
+	if (!kn->active)
+		pr_warn("Yikes! Someone will get an inactive kn");
 }
 
 /**
@@ -1650,25 +1630,23 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	 */
 	if (!(kn->flags & KERNFS_SUICIDAL)) {
 		kn->flags |= KERNFS_SUICIDAL;
-		__kernfs_remove(kn);
+		__kernfs_remove(kn); // releases/acquires root->kernfs_rwsem
 		kn->flags |= KERNFS_SUICIDED;
 		ret = true;
 	} else {
-		wait_queue_head_t *waitq = &kernfs_root(kn)->deactivate_waitq;
-		DEFINE_WAIT(wait);
+		up_write(&root->kernfs_rwsem);
+		synchronize_rcu();
+		/* SUICIDAL caller above will have to wait
+		   for holders of active reference past RCU grace period, so by
+		   synchronize_rcu we also wait for finishing the suicidium.
+		   Beware that it doesn't mean we'd see
+		   (kn->flags & KERNFS_SUICIDED) 
+		   or
+		   RB_EMPTY_NODE(&kn->rb)
+		   here
+		   XXX removal completion might be handy here */
+		down_write(&root->kernfs_rwsem);
 
-		while (true) {
-			prepare_to_wait(waitq, &wait, TASK_UNINTERRUPTIBLE);
-
-			if ((kn->flags & KERNFS_SUICIDED) &&
-			    atomic_read(&kn->active) == KN_DEACTIVATED_BIAS)
-				break;
-
-			up_write(&root->kernfs_rwsem);
-			schedule();
-			down_write(&root->kernfs_rwsem);
-		}
-		finish_wait(waitq, &wait);
 		WARN_ON_ONCE(!RB_EMPTY_NODE(&kn->rb));
 		ret = false;
 	}
