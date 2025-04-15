@@ -1629,7 +1629,6 @@ void cgroup_kn_unlock(struct kernfs_node *kn)
 
 	cgroup_unlock();
 
-	kernfs_unbreak_active_protection(kn);
 	cgroup_put(cgrp);
 }
 
@@ -1667,7 +1666,6 @@ struct cgroup *cgroup_kn_lock_live(struct kernfs_node *kn, bool drain_offline)
 	 */
 	if (!cgroup_tryget(cgrp))
 		return NULL;
-	kernfs_break_active_protection(kn);
 
 	if (drain_offline)
 		cgroup_lock_and_drain_offline(cgrp);

@@ -761,7 +761,6 @@ static ssize_t
 sdev_store_delete(struct device *dev, struct device_attribute *attr,
 		  const char *buf, size_t count)
 {
-	struct kernfs_node *kn;
 	struct scsi_device *sdev = to_scsi_device(dev);
 
 	/*
@@ -771,8 +770,6 @@ sdev_store_delete(struct device *dev, struct device_attribute *attr,
 	if (scsi_device_get(sdev))
 		return -ENODEV;
 
-	kn = sysfs_break_active_protection(&dev->kobj, &attr->attr);
-	WARN_ON_ONCE(!kn);
 	/*
 	 * Concurrent writes into the "delete" sysfs attribute may trigger
 	 * concurrent calls to device_remove_file() and scsi_remove_device().
@@ -785,8 +782,6 @@ sdev_store_delete(struct device *dev, struct device_attribute *attr,
 	 */
 	device_remove_file(dev, attr);
 	scsi_remove_device(sdev);
-	if (kn)
-		sysfs_unbreak_active_protection(kn);
 	scsi_device_put(sdev);
 	return count;
 };

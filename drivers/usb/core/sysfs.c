@@ -1226,15 +1226,7 @@ static ssize_t interface_authorized_store(struct device *dev,
 	if (val) {
 		usb_authorize_interface(intf);
 	} else {
-		/*
-		 * Prevent deadlock if another process is concurrently
-		 * trying to unregister intf.
-		 */
-		kn = sysfs_break_active_protection(&dev->kobj, &attr->attr);
-		if (kn) {
-			usb_deauthorize_interface(intf);
-			sysfs_unbreak_active_protection(kn);
-		}
+		usb_deauthorize_interface(intf);
 	}
 
 	return count;

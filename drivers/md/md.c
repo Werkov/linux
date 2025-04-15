@@ -3575,7 +3575,6 @@ rdev_attr_store(struct kobject *kobj, struct attribute *attr,
 {
 	struct rdev_sysfs_entry *entry = container_of(attr, struct rdev_sysfs_entry, attr);
 	struct md_rdev *rdev = container_of(kobj, struct md_rdev, kobj);
-	struct kernfs_node *kn = NULL;
 	bool suspend = false;
 	ssize_t rv;
 	struct mddev *mddev = READ_ONCE(rdev->mddev);
@@ -3588,8 +3587,6 @@ rdev_attr_store(struct kobject *kobj, struct attribute *attr,
 		return -ENODEV;
 
 	if (entry->store == state_store) {
-		if (cmd_match(page, "remove"))
-			kn = sysfs_break_active_protection(kobj, attr);
 		if (cmd_match(page, "remove") || cmd_match(page, "re-add") ||
 		    cmd_match(page, "writemostly") ||
 		    cmd_match(page, "-writemostly"))
@@ -3604,9 +3601,6 @@ rdev_attr_store(struct kobject *kobj, struct attribute *attr,
 			rv = entry->store(rdev, page, length);
 		suspend ? mddev_unlock_and_resume(mddev) : mddev_unlock(mddev);
 	}
-
-	if (kn)
-		sysfs_unbreak_active_protection(kn);
 
 	return rv;
 }

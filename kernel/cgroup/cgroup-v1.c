@@ -854,14 +854,6 @@ static int cgroup1_rename(struct kernfs_node *kn, struct kernfs_node *new_parent
 	if (rcu_access_pointer(kn->__parent) != new_parent)
 		return -EIO;
 
-	/*
-	 * We're gonna grab cgroup_mutex which nests outside kernfs
-	 * active_ref.  kernfs_rename() doesn't require active_ref
-	 * protection.  Break them before grabbing cgroup_mutex.
-	 */
-	kernfs_break_active_protection(new_parent);
-	kernfs_break_active_protection(kn);
-
 	cgroup_lock();
 
 	ret = kernfs_rename(kn, new_parent, new_name_str);
@@ -870,8 +862,6 @@ static int cgroup1_rename(struct kernfs_node *kn, struct kernfs_node *new_parent
 
 	cgroup_unlock();
 
-	kernfs_unbreak_active_protection(kn);
-	kernfs_unbreak_active_protection(new_parent);
 	return ret;
 }
 

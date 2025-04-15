@@ -75,7 +75,6 @@ static inline int dev_isalive(const struct net_device *dev)
 static int sysfs_rtnl_lock(struct kobject *kobj, struct attribute *attr,
 			   struct net_device *ndev)
 {
-	struct kernfs_node *kn;
 	int ret = 0;
 
 	/* First, we hold a reference to the net device as the unregistration
@@ -84,17 +83,6 @@ static int sysfs_rtnl_lock(struct kobject *kobj, struct attribute *attr,
 	 * lock.
 	 */
 	dev_hold(ndev);
-	/* sysfs_break_active_protection was introduced to allow self-removal of
-	 * devices and their associated sysfs files by bailing out of the
-	 * sysfs/kernfs protection. We do this here to allow the unregistration
-	 * path to complete in parallel. The following takes a reference on the
-	 * kobject and the kernfs_node being accessed.
-	 *
-	 * This works because we hold a reference onto the net device and the
-	 * unregistration path will wait for us eventually in netdev_run_todo
-	 * (outside an rtnl lock section).
-	 */
-	kn = sysfs_break_active_protection(kobj, attr);
 	/* We can now try to take the rtnl lock. This can't deadlock us as the
 	 * unregistration path is able to drain sysfs files (kernfs_node) thanks
 	 * to the above dance.
@@ -118,7 +106,6 @@ static int sysfs_rtnl_lock(struct kobject *kobj, struct attribute *attr,
 	 * the rtnl lock.
 	 */
 unbreak:
-	sysfs_unbreak_active_protection(kn);
 	dev_put(ndev);
 
 	return ret;

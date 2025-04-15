@@ -441,8 +441,6 @@ struct kernfs_node *kernfs_create_link(struct kernfs_node *parent,
 void kernfs_activate(struct kernfs_node *kn);
 void kernfs_show(struct kernfs_node *kn, bool show);
 void kernfs_remove(struct kernfs_node *kn);
-void kernfs_break_active_protection(struct kernfs_node *kn);
-void kernfs_unbreak_active_protection(struct kernfs_node *kn);
 bool kernfs_remove_self(struct kernfs_node *kn);
 int kernfs_remove_by_name_ns(struct kernfs_node *parent, const char *name,
 			     const void *ns);
