@@ -444,12 +444,15 @@ static bool kernfs_unlink_sibling(struct kernfs_node *kn)
  */
 struct kernfs_node *kernfs_get_active(struct kernfs_node *kn)
 {
+	struct kernfs_root *root;
+
 	if (unlikely(!kn))
 		return NULL;
 
-	rcu_read_lock();
+	root = kernfs_root(kn);
+	srcu_read_lock(&root->active_srcu);
 	if (!kn->active) { // rcu_dereference_pointer
-		rcu_read_unlock();
+		srcu_read_unlock(&root->active_srcu);
 		return NULL;
 	}
 
@@ -465,11 +468,14 @@ struct kernfs_node *kernfs_get_active(struct kernfs_node *kn)
  */
 void kernfs_put_active(struct kernfs_node *kn)
 {
+	struct kernfs_root *root;
+
 	if (unlikely(!kn))
 		return;
 
-	WARN_ON_ONCE(!rcu_read_lock_held());
-	rcu_read_unlock();
+	root = kernfs_root(kn);
+	WARN_ON_ONCE(!srcu_read_lock_held(&root->active_srcu));
+	srcu_read_unlock(&root->active_srcu);
 }
 
 /**
@@ -500,7 +506,7 @@ static void kernfs_drain(struct kernfs_node *kn)
 
 	up_write(&root->kernfs_rwsem);
 
-	synchronize_rcu();
+	synchronize_srcu(&root->active_srcu);
 	/* Anyone who saw an active reference, has put it by now */
 
 	if (kernfs_should_drain_open_files(kn))
@@ -579,6 +585,7 @@ void kernfs_put(struct kernfs_node *kn)
 	} else {
 		/* just released the root kn, free @root too */
 		idr_destroy(&root->ino_idr);
+		cleanup_srcu_struct(&root->active_srcu);
 		kfree_rcu(root, rcu);
 	}
 }
@@ -1001,6 +1008,7 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 	root->syscall_ops = scops;
 	root->flags = flags;
 	root->kn = kn;
+	init_srcu_struct(&root->active_srcu);
 
 	if (!(root->flags & KERNFS_ROOT_CREATE_DEACTIVATED))
 		kernfs_activate(kn);
@@ -1578,7 +1586,7 @@ void kernfs_unbreak_active_protection(struct kernfs_node *kn)
 	 * deactivated state.  If @kn is already removed, the temporary
 	 * bump is guaranteed to be gone before @kn is released.
 	 */
-	rcu_read_lock();
+	srcu_read_lock(&kernfs_root(kn)->active_srcu);
 	if (!kn->active)
 		pr_warn("Yikes! Someone will get an inactive kn");
 }
