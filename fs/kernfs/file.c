@@ -787,7 +787,7 @@ bool kernfs_should_drain_open_files(struct kernfs_node *kn)
 	return ret;
 }
 
-static void kernfs_drain_open_files(struct kernfs_node *kn)
+void kernfs_drain_open_files(struct kernfs_node *kn)
 {
 	struct kernfs_open_node *on;
 	struct kernfs_open_file *of;
@@ -815,12 +815,6 @@ static void kernfs_drain_open_files(struct kernfs_node *kn)
 
 	WARN_ON_ONCE(on->nr_mmapped || on->nr_to_release);
 	mutex_unlock(mutex);
-}
-
-void kernfs_drain_open_files_rcu(struct rcu_head *rcu)
-{
-	struct kernfs_node *kn = container_of(rcu, struct kernfs_node, active_rcu);
-	kernfs_drain_open_files(kn);
 }
 
 /*
