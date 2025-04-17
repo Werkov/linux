@@ -2536,6 +2536,7 @@ static struct rdtgroup *kernfs_to_rdtgroup(struct kernfs_node *kn)
 static void rdtgroup_kn_get(struct rdtgroup *rdtgrp, struct kernfs_node *kn)
 {
 	atomic_inc(&rdtgrp->waitcount);
+	kernfs_break_active_protection(kn);
 }
 
 static void rdtgroup_kn_put(struct rdtgroup *rdtgrp, struct kernfs_node *kn)
@@ -2545,7 +2546,10 @@ static void rdtgroup_kn_put(struct rdtgroup *rdtgrp, struct kernfs_node *kn)
 		if (rdtgrp->mode == RDT_MODE_PSEUDO_LOCKSETUP ||
 		    rdtgrp->mode == RDT_MODE_PSEUDO_LOCKED)
 			rdtgroup_pseudo_lock_remove(rdtgrp);
+		kernfs_unbreak_active_protection(kn);
 		rdtgroup_remove(rdtgrp);
+	} else {
+		kernfs_unbreak_active_protection(kn);
 	}
 }
 

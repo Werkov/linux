@@ -58,6 +58,7 @@ static ssize_t disable_show(struct device *dev,
 	u16 portstatus, unused;
 	bool disabled;
 	int rc;
+	struct kernfs_node *kn;
 
 	if (!hub)
 		return -ENODEV;
@@ -66,6 +67,15 @@ static ssize_t disable_show(struct device *dev,
 	if (rc < 0)
 		goto out_hub_get;
 
+	/*
+	 * Prevent deadlock if another process is concurrently
+	 * trying to unregister hdev.
+	 */
+	kn = sysfs_break_active_protection(&dev->kobj, &attr->attr);
+	if (!kn) {
+		rc = -ENODEV;
+		goto out_autopm;
+	}
 	usb_lock_device(hdev);
 	if (hub->disconnected) {
 		rc = -ENODEV;
@@ -77,6 +87,7 @@ static ssize_t disable_show(struct device *dev,
 
  out_hdev_lock:
 	usb_unlock_device(hdev);
+	sysfs_unbreak_active_protection(kn);
  out_autopm:
 	usb_autopm_put_interface(intf);
  out_hub_get:
@@ -98,6 +109,7 @@ static ssize_t disable_store(struct device *dev, struct device_attribute *attr,
 	int port1 = port_dev->portnum;
 	bool disabled;
 	int rc;
+	struct kernfs_node *kn;
 
 	if (!hub)
 		return -ENODEV;
@@ -110,6 +122,15 @@ static ssize_t disable_store(struct device *dev, struct device_attribute *attr,
 	if (rc < 0)
 		goto out_hub_get;
 
+	/*
+	 * Prevent deadlock if another process is concurrently
+	 * trying to unregister hdev.
+	 */
+	kn = sysfs_break_active_protection(&dev->kobj, &attr->attr);
+	if (!kn) {
+		rc = -ENODEV;
+		goto out_autopm;
+	}
 	usb_lock_device(hdev);
 	if (hub->disconnected) {
 		rc = -ENODEV;
@@ -132,6 +153,7 @@ static ssize_t disable_store(struct device *dev, struct device_attribute *attr,
 
  out_hdev_lock:
 	usb_unlock_device(hdev);
+	sysfs_unbreak_active_protection(kn);
  out_autopm:
 	usb_autopm_put_interface(intf);
  out_hub_get:

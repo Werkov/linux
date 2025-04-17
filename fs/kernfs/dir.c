@@ -1521,6 +1521,60 @@ void kernfs_remove(struct kernfs_node *kn)
 }
 
 /**
+ * kernfs_break_active_protection - break out of active protection
+ * @kn: the self kernfs_node
+ *
+ * The caller must be running off of a kernfs operation which is invoked
+ * with an active reference - e.g. one of kernfs_ops.  Each invocation of
+ * this function must also be matched with an invocation of
+ * kernfs_unbreak_active_protection().
+ *
+ * This function releases the active reference of @kn the caller is
+ * holding.  Once this function is called, @kn may be removed at any point
+ * and the caller is solely responsible for ensuring that the objects it
+ * dereferences are accessible.
+ */
+void kernfs_break_active_protection(struct kernfs_node *kn)
+{
+	/*
+	 * Take out ourself out of the active ref dependency chain.  If
+	 * we're called without an active ref, lockdep will complain.
+	 */
+	kernfs_put_active(kn);
+}
+
+/**
+ * kernfs_unbreak_active_protection - undo kernfs_break_active_protection()
+ * @kn: the self kernfs_node
+ *
+ * If kernfs_break_active_protection() was called, this function must be
+ * invoked before finishing the kernfs operation.  Note that while this
+ * function restores the active reference, it doesn't and can't actually
+ * restore the active protection - @kn may already or be in the process of
+ * being removed.  Once kernfs_break_active_protection() is invoked, that
+ * protection is irreversibly gone for the kernfs operation instance.
+ *
+ * While this function may be called at any point after
+ * kernfs_break_active_protection() is invoked, its most useful location
+ * would be right before the enclosing kernfs operation returns.
+ */
+void kernfs_unbreak_active_protection(struct kernfs_node *kn)
+{
+	/*
+	 * @kn->active could be in any state; however, the increment we do
+	 * here will be undone as soon as the enclosing kernfs operation
+	 * finishes and this temporary bump can't break anything.  If @kn
+	 * is alive, nothing changes.  If @kn is being deactivated, the
+	 * soon-to-follow put will either finish deactivation or restore
+	 * deactivated state.  If @kn is already removed, the temporary
+	 * bump is guaranteed to be gone before @kn is released.
+	 */
+	rcu_read_lock();
+	if (!kn->active)
+		pr_warn("Yikes! Someone will get an inactive kn");
+}
+
+/**
  * kernfs_remove_self - remove a kernfs_node from its own method
  * @kn: the self kernfs_node to remove
  *
@@ -1554,6 +1608,7 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	struct kernfs_root *root = kernfs_root(kn);
 
 	down_write(&root->kernfs_rwsem);
+	kernfs_break_active_protection(kn); // XXX is it needed?
 
 	/*
 	 * SUICIDAL is used to arbitrate among competing invocations.  Only
@@ -1582,6 +1637,7 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 	 * This must be done while kernfs_rwsem held exclusive; otherwise,
 	 * waiting for SUICIDED && deactivated could finish prematurely.
 	 */
+	kernfs_unbreak_active_protection(kn); // XXX is it needed?
 
 	up_write(&root->kernfs_rwsem);
 	return ret;
