@@ -219,6 +219,8 @@ static int shrinker_memcg_alloc(struct shrinker *shrinker)
 
 	if (mem_cgroup_disabled())
 		return -ENOSYS;
+	if (!memcg_kmem_online() && !(shrinker->flags & SHRINKER_NONSLAB))
+		return -ENOSYS;
 
 	mutex_lock(&shrinker_mutex);
 	id = idr_alloc(&shrinker_idr, shrinker, 0, 0, GFP_KERNEL);
