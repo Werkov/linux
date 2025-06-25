@@ -108,6 +108,7 @@ static struct pid_namespace *create_pid_namespace(struct user_namespace *user_ns
 	ns->ns.ops = &pidns_operations;
 
 	ns->pid_max = PID_MAX_LIMIT;
+	ns->h_pid_max = READ_ONCE(parent_pid_ns->h_pid_max);
 	err = register_pidns_sysctls(ns);
 	if (err)
 		goto out_free_inum;

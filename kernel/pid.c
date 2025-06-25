@@ -189,7 +189,15 @@ struct pid *alloc_pid(struct pid_namespace *ns, pid_t *set_tid,
 
 	for (i = ns->level; i >= 0; i--) {
 		int tid = 0;
-		int pid_max = READ_ONCE(tmp->pid_max);
+		int pid_max = READ_ONCE(tmp->h_pid_max);
+		/*
+		 * Variants
+		 *   - cache h_pid_max inside pid_namespace -- needs children traversal upon update
+		 *   - top-down allocation here -- missing pointers parent->child
+		 *   - calculate minimum at each level O(nr_depth^2)
+		 *   - alloc (running min) & rollback
+		 *   - store ancestors[] (like cgroup.ancestor) do top-down allocation
+		 */
 
 		if (set_tid_size) {
 			tid = set_tid[ns->level - i];

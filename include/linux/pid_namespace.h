@@ -31,6 +31,7 @@ struct pid_namespace {
 	struct kmem_cache *pid_cachep;
 	unsigned int level;
 	int pid_max;
+	int h_pid_max;
 	struct pid_namespace *parent;
 #ifdef CONFIG_BSD_PROCESS_ACCT
 	struct fs_pin *bacct;
