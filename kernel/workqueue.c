@@ -7088,9 +7088,32 @@ static ssize_t max_active_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(max_active);
 
+/*
+ * Debugging interface intended for kernel test suites to settle state
+ * deterministically.
+ */
+static ssize_t flush_store(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct workqueue_struct *wq = dev_to_wq(dev);
+	int val;
+
+	if (sscanf(buf, "%d", &val) != 1 || val != 1)
+		return -EINVAL;
+
+	flush_workqueue(wq);
+	pr_info("%s (%d): flush_workqueue(%s)\n",
+		current->comm, task_pid_nr(current),
+		wq->name);
+	return count;
+}
+static DEVICE_ATTR_WO(flush);
+
 static struct attribute *wq_sysfs_attrs[] = {
 	&dev_attr_per_cpu.attr,
 	&dev_attr_max_active.attr,
+	&dev_attr_flush.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(wq_sysfs);
