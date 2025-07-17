@@ -100,7 +100,7 @@ struct blocking_notifier_head cgroup_lifetime_notifier =
 
 DEFINE_SPINLOCK(trace_cgroup_path_lock);
 char trace_cgroup_path[TRACE_CGROUP_PATH_LEN];
-static bool cgroup_debug __read_mostly;
+static bool cgroup_debug __ro_after_init;
 
 /*
  * Protects cgroup_idr and css_idr so that IDs can be released without
@@ -181,13 +181,13 @@ EXPORT_SYMBOL_GPL(cgrp_dfl_root);
 bool cgrp_dfl_visible;
 
 /* some controllers are not supported in the default hierarchy */
-static u16 cgrp_dfl_inhibit_ss_mask;
+static u16 cgrp_dfl_inhibit_ss_mask __ro_after_init;
 
 /* some controllers are implicitly enabled on the default hierarchy */
-static u16 cgrp_dfl_implicit_ss_mask;
+static u16 cgrp_dfl_implicit_ss_mask __ro_after_init;
 
 /* some controllers can be threaded on the default hierarchy */
-static u16 cgrp_dfl_threaded_ss_mask;
+static u16 cgrp_dfl_threaded_ss_mask __ro_after_init;
 
 /* The list of hierarchy roots */
 LIST_HEAD(cgroup_roots);
@@ -209,10 +209,10 @@ static u64 css_serial_nr_next = 1;
  * These bitmasks identify subsystems with specific features to avoid
  * having to do iterative checks repeatedly.
  */
-static u16 have_fork_callback __read_mostly;
-static u16 have_exit_callback __read_mostly;
-static u16 have_release_callback __read_mostly;
-static u16 have_canfork_callback __read_mostly;
+static u16 have_fork_callback __ro_after_init;
+static u16 have_exit_callback __ro_after_init;
+static u16 have_release_callback __ro_after_init;
+static u16 have_canfork_callback __ro_after_init;
 
 static bool have_favordynmods __ro_after_init = IS_ENABLED(CONFIG_CGROUP_FAVOR_DYNMODS);
 
@@ -243,7 +243,7 @@ static const char *cgroup_opt_feature_names[OPT_FEATURE_COUNT] = {
 #endif
 };
 
-static u16 cgroup_feature_disable_mask __read_mostly;
+static u16 cgroup_feature_disable_mask __ro_after_init;
 
 static int cgroup_apply_control(struct cgroup *cgrp);
 static void cgroup_finalize_control(struct cgroup *cgrp, int ret);

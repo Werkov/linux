@@ -27,13 +27,13 @@
 #define CGROUP_PIDLIST_DESTROY_DELAY	HZ
 
 /* Controllers blocked by the commandline in v1 */
-static u16 cgroup_no_v1_mask;
+static u16 cgroup_no_v1_mask __ro_after_init;
 
 /* disable named v1 mounts */
-static bool cgroup_no_v1_named;
+static bool cgroup_no_v1_named __ro_after_init;
 
 /* Show unavailable controllers in /proc/cgroups */
-static bool proc_show_all;
+static bool proc_show_all __ro_after_init;
 
 /*
  * pidlist destructions need to be flushed on cgroup destruction.  Use a
