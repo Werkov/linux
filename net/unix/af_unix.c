@@ -3246,7 +3246,7 @@ static int unix_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case SIOCUNIXFILE:
 		err = unix_open_file(sk);
 		break;
-#if IS_ENABLED(CONFIG_AF_UNIX_OOB)
+#if IS_ENABLED(CONFIG_AF_UNIX_OOB) && extra_cond
 	case SIOCATMARK:
 		{
 			struct unix_sock *u = unix_sk(sk);
