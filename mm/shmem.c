@@ -121,6 +121,7 @@ struct shmem_options {
 	int huge;
 	int seen;
 	bool noswap;
+	bool nomemcg;
 	unsigned short quota_types;
 	struct shmem_quota_limits qlimits;
 #if IS_ENABLED(CONFIG_UNICODE)
@@ -133,6 +134,7 @@ struct shmem_options {
 #define SHMEM_SEEN_INUMS 8
 #define SHMEM_SEEN_NOSWAP 16
 #define SHMEM_SEEN_QUOTA 32
+#define SHMEM_SEEN_NOMEMCG 64
 };
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -1919,6 +1921,7 @@ static struct folio *shmem_alloc_and_add_folio(struct vm_fault *vmf,
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	unsigned long suitable_orders = 0;
 	struct folio *folio = NULL;
+	struct mm_struct *charge_mm;
 	long pages;
 	int error, order;
 
@@ -1954,7 +1957,8 @@ allocated:
 	__folio_set_swapbacked(folio);
 
 	gfp &= GFP_RECLAIM_MASK;
-	error = mem_cgroup_charge(folio, fault_mm, gfp);
+	charge_mm = SHMEM_SB(inode->i_sb)->nomemcg ? ERR_PTR(-ENOTDIR) : fault_mm;
+	error = mem_cgroup_charge(folio, charge_mm, gfp);
 	if (error) {
 		if (xa_find(&mapping->i_pages, &index,
 				index + pages - 1, XA_PRESENT)) {
@@ -3223,6 +3227,7 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	struct address_space *mapping = inode->i_mapping;
 	gfp_t gfp = mapping_gfp_mask(mapping);
 	pgoff_t pgoff = linear_page_index(dst_vma, dst_addr);
+	struct mm_struct *charge_mm;
 	void *page_kaddr;
 	struct folio *folio;
 	int ret;
@@ -3300,7 +3305,8 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	if (unlikely(pgoff >= max_off))
 		goto out_release;
 
-	ret = mem_cgroup_charge(folio, dst_vma->vm_mm, gfp);
+	charge_mm = SHMEM_SB(inode->i_sb)->nomemcg ? ERR_PTR(-ENOTDIR) : dst_vma->vm_mm;
+	ret = mem_cgroup_charge(folio, charge_mm, gfp);
 	if (ret)
 		goto out_release;
 	ret = shmem_add_to_page_cache(folio, mapping, pgoff, NULL, gfp);
@@ -4550,6 +4556,7 @@ enum shmem_param {
 	Opt_inode32,
 	Opt_inode64,
 	Opt_noswap,
+	Opt_nomemcg,
 	Opt_quota,
 	Opt_usrquota,
 	Opt_grpquota,
@@ -4582,6 +4589,9 @@ const struct fs_parameter_spec shmem_fs_parameters[] = {
 	fsparam_flag  ("inode32",	Opt_inode32),
 	fsparam_flag  ("inode64",	Opt_inode64),
 	fsparam_flag  ("noswap",	Opt_noswap),
+#ifdef CONFIG_MEMCG
+	fsparam_flag  ("nomemcg",	Opt_nomemcg),
+#endif
 #ifdef CONFIG_TMPFS_QUOTA
 	fsparam_flag  ("quota",		Opt_quota),
 	fsparam_flag  ("usrquota",	Opt_usrquota),
@@ -4743,6 +4753,14 @@ static int shmem_parse_one(struct fs_context *fc, struct fs_parameter *param)
 		ctx->noswap = true;
 		ctx->seen |= SHMEM_SEEN_NOSWAP;
 		break;
+	case Opt_nomemcg:
+		if ((fc->user_ns != &init_user_ns) || !capable(CAP_SYS_ADMIN)) {
+			return invalfc(fc,
+				       "Turning off memcg in unprivileged tmpfs mounts unsupported");
+		}
+		ctx->nomemcg = true;
+		ctx->seen |= SHMEM_SEEN_NOMEMCG;
+		break;
 	case Opt_quota:
 		if (fc->user_ns != &init_user_ns)
 			return invalfc(fc, "Quotas in unprivileged tmpfs mounts are unsupported");
@@ -4900,6 +4918,17 @@ static int shmem_reconfigure(struct fs_context *fc)
 		goto out;
 	}
 
+#ifdef CONFIG_MEMCG
+	if ((ctx->seen & SHMEM_SEEN_NOMEMCG) && ctx->nomemcg && !sbinfo->nomemcg) {
+		err = "Cannot disable memcg on remount";
+		goto out;
+	}
+	if (!(ctx->seen & SHMEM_SEEN_NOMEMCG) && !ctx->nomemcg && sbinfo->nomemcg) {
+		err = "Cannot enable memcg on remount if it was disabled on first mount";
+		goto out;
+	}
+#endif
+
 	if (ctx->seen & SHMEM_SEEN_QUOTA &&
 	    !sb_any_quota_loaded(fc->root->d_sb)) {
 		err = "Cannot enable quota on remount";
@@ -4940,6 +4969,9 @@ static int shmem_reconfigure(struct fs_context *fc)
 
 	if (ctx->noswap)
 		sbinfo->noswap = true;
+
+	if (ctx->nomemcg)
+		sbinfo->nomemcg = true;
 
 	raw_spin_unlock(&sbinfo->stat_lock);
 	mpol_put(mpol);
@@ -4999,6 +5031,10 @@ static int shmem_show_options(struct seq_file *seq, struct dentry *root)
 	mpol_put(mpol);
 	if (sbinfo->noswap)
 		seq_printf(seq, ",noswap");
+#ifdef CONFIG_MEMCG
+	if (sbinfo->nomemcg)
+		seq_printf(seq, ",nomemcg");
+#endif
 #ifdef CONFIG_TMPFS_QUOTA
 	if (sb_has_quota_active(root->d_sb, USRQUOTA))
 		seq_printf(seq, ",usrquota");
@@ -5077,6 +5113,7 @@ static int shmem_fill_super(struct super_block *sb, struct fs_context *fc)
 		if (!(ctx->seen & SHMEM_SEEN_INUMS))
 			ctx->full_inums = IS_ENABLED(CONFIG_TMPFS_INODE64);
 		sbinfo->noswap = ctx->noswap;
+		sbinfo->nomemcg = ctx->nomemcg;
 	} else {
 		sb->s_flags |= SB_NOUSER;
 	}

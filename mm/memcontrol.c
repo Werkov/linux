@@ -894,13 +894,16 @@ static __always_inline struct mem_cgroup *active_memcg(void)
 
 /**
  * get_mem_cgroup_from_mm: Obtain a reference on given mm_struct's memcg.
- * @mm: mm from which memcg should be extracted. It can be NULL.
+ * @mm: mm from which memcg should be extracted. It can be NULL or encode
+ * specific case via "error" code.
  *
  * Obtain a reference on mm->memcg and returns it if successful. If mm
  * is NULL, then the memcg is chosen as follows:
  * 1) The active memcg, if set.
  * 2) current->mm->memcg, if available
  * 3) root memcg
+ * Specific codes for mm:
+ * 1) -ENOTDIR is root memcg
  * If mem_cgroup is disabled, NULL is returned.
  */
 struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
@@ -919,7 +922,10 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 	 * counting is disabled on the root level in the
 	 * cgroup core. See CSS_NO_REF.
 	 */
-	if (unlikely(!mm)) {
+	if (unlikely(IS_ERR_OR_NULL(mm))) {
+		if (PTR_ERR(mm) == -ENOTDIR) {
+			return root_mem_cgroup;
+		}
 		memcg = active_memcg();
 		if (unlikely(memcg)) {
 			/* remote memcg must hold a ref */
