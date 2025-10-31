@@ -533,7 +533,7 @@ static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
  */
 static inline int cgroup_level(struct cgroup *cgrp)
 {
-	return cgrp->level;
+	return cgrp->nr_ancestors - 1;
 }
 
 /**
