@@ -1938,16 +1938,16 @@ Reclaim Protection
 The protection configured with "memory.low" or "memory.min" applies relatively
 to the target of the reclaim (i.e. any of memory cgroup limits, proactive
 memory.reclaim or global reclaim apparently located in the root cgroup).
-
-  root ... - A - B - C
-              \    ` D
-               ` E
-
 The protection value configured for B applies unchanged to the reclaim
-targeting A (i.e. caused by competition with the sibling E).  When the reclaim
-targets ancestors of A, the effective protection of B is capped by the
-protection value configured for A (and any other intermediate ancestors between
-A and the target).
+targeting A (i.e. caused by competition with the sibling E)::
+
+		root - ... - A - B - C
+		              \    ` D
+		               ` E
+
+When the reclaim targets ancestors of A, the effective protection of B is
+capped by the protection value configured for A (and any other intermediate
+ancestors between A and the target).
 
 To express indifference about relative sibling protection, it is suggested to
 use memory_recursiveprot. Configuring all descendants of a parent with finite
