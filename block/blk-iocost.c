@@ -547,7 +547,7 @@ struct ioc_gq {
 
 	/* this iocg's depth in the hierarchy and ancestors including self */
 	int				level;
-	struct ioc_gq			*ancestors[];
+	struct ioc_gq			*ancestors[] __counted_by(level);
 };
 
 /* per cgroup */
