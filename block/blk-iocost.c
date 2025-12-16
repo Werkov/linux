@@ -656,6 +656,25 @@ static const u32 vrate_adj_pct[] =
 
 static struct blkcg_policy blkcg_policy_iocost;
 
+static struct ioc_gq *iocg_parent(struct ioc_gq *iocg)
+{
+	if (iocg->level <= 0)
+		return NULL
+	return iocg->ancestors[iocg->level - 1];
+}
+
+/* Iterate from iocg up, iter has always parent */
+#define for_each_iocg_up(iter, iocg)				\
+	for ((iter) = (iocg);					\
+	     (iter)->level > 0;					\
+	     (iter)=(iocg)->ancestors[(iter)->level - 1])
+
+/* Iterate from root+1 down to iocg, iter has always parent */
+#define for_each_iocg_down(iter, iocg)				\
+	for ((iter) = (iocg->level > 0) ? (iocg)->ancestors[1] : (iocg);\
+	     (iter)->level < (iocg)->level;			\
+	     (iter)=(iocg)->ancestors[(iter)->level + 1])
+
 /* accessors and helpers */
 static struct ioc *rqos_to_ioc(struct rq_qos *rqos)
 {
@@ -1115,9 +1134,9 @@ static void __propagate_weights(struct ioc_gq *iocg, u32 active, u32 inuse,
 	if (active == iocg->active && inuse == iocg->inuse)
 		return;
 
-	for (lvl = iocg->level - 1; lvl >= 0; lvl--) {
-		struct ioc_gq *parent = iocg->ancestors[lvl];
-		struct ioc_gq *child = iocg->ancestors[lvl + 1];
+	struct ioc_gq *child;
+	for_each_iocg(child, iocg) {
+		struct ioc_gq *parent = iocg_parent(child);
 		u32 parent_active = 0, parent_inuse = 0;
 
 		/* update the level sums */
@@ -1173,7 +1192,6 @@ static void propagate_weights(struct ioc_gq *iocg, u32 active, u32 inuse,
 static void current_hweight(struct ioc_gq *iocg, u32 *hw_activep, u32 *hw_inusep)
 {
 	struct ioc *ioc = iocg->ioc;
-	int lvl;
 	u32 hwa, hwi;
 	int ioc_gen;
 
@@ -1195,9 +1213,9 @@ static void current_hweight(struct ioc_gq *iocg, u32 *hw_activep, u32 *hw_inusep
 	smp_rmb();
 
 	hwa = hwi = WEIGHT_ONE;
-	for (lvl = 0; lvl <= iocg->level - 1; lvl++) {
-		struct ioc_gq *parent = iocg->ancestors[lvl];
-		struct ioc_gq *child = iocg->ancestors[lvl + 1];
+	struct ioc_gq *child;
+	for_each_iocg_down(child, iocg) {
+		struct ioc_gq *parent = iocg_parent(iocg);
 		u64 active_sum = READ_ONCE(parent->child_active_sum);
 		u64 inuse_sum = READ_ONCE(parent->child_inuse_sum);
 		u32 active = READ_ONCE(child->active);
@@ -1233,13 +1251,12 @@ static u32 current_hweight_max(struct ioc_gq *iocg)
 	u32 hwm = WEIGHT_ONE;
 	u32 inuse = iocg->active;
 	u64 child_inuse_sum;
-	int lvl;
 
 	lockdep_assert_held(&iocg->ioc->lock);
 
-	for (lvl = iocg->level - 1; lvl >= 0; lvl--) {
-		struct ioc_gq *parent = iocg->ancestors[lvl];
-		struct ioc_gq *child = iocg->ancestors[lvl + 1];
+	struct ioc_gq *child;
+	for_each_iocg_up(child, iocg) {
+		struct ioc_gq *parent = iocg_parent(child);
 
 		child_inuse_sum = parent->child_inuse_sum + inuse - child->inuse;
 		hwm = div64_u64((u64)hwm * inuse, child_inuse_sum);
@@ -1660,17 +1677,17 @@ static bool iocg_is_idle(struct ioc_gq *iocg)
 static void iocg_build_inner_walk(struct ioc_gq *iocg,
 				  struct list_head *inner_walk)
 {
-	int lvl;
-
 	WARN_ON_ONCE(!list_empty(&iocg->walk_list));
 
 	/* find the first ancestor which hasn't been visited yet */
-	for (lvl = iocg->level - 1; lvl >= 0; lvl--) {
-		if (!list_empty(&iocg->ancestors[lvl]->walk_list))
+	struct ioc_gq *child;
+	for_each_iocg_up(child, iocg) {
+		if (!list_empty(&iocg_parent(child)->walk_list))
 			break;
 	}
 
 	/* walk down and visit the inner nodes to get pre-order traversal */
+	int lvl = child->level; // XXX replace with iterator macro
 	while (++lvl <= iocg->level - 1) {
 		struct ioc_gq *inner = iocg->ancestors[lvl];
 
@@ -1682,17 +1699,16 @@ static void iocg_build_inner_walk(struct ioc_gq *iocg,
 /* propagate the deltas to the parent */
 static void iocg_flush_stat_upward(struct ioc_gq *iocg)
 {
-	if (iocg->level > 0) {
-		struct iocg_stat *parent_stat =
-			&iocg->ancestors[iocg->level - 1]->stat;
+	struct iocg_gq *parent = iocg_parent(iocg);
 
-		parent_stat->usage_us +=
+	if (parent) {
+		parent->stat.usage_us +=
 			iocg->stat.usage_us - iocg->last_stat.usage_us;
-		parent_stat->wait_us +=
+		parent->stat.wait_us +=
 			iocg->stat.wait_us - iocg->last_stat.wait_us;
-		parent_stat->indebt_us +=
+		parent->stat.indebt_us +=
 			iocg->stat.indebt_us - iocg->last_stat.indebt_us;
-		parent_stat->indelay_us +=
+		parent->stat.indelay_us +=
 			iocg->stat.indelay_us - iocg->last_stat.indelay_us;
 	}
 
@@ -1923,16 +1939,16 @@ static void transfer_surpluses(struct list_head *surpluses, struct ioc_now *now)
 	 * up the hierarchy.
 	 */
 	list_for_each_entry(iocg, surpluses, surplus_list) {
-		struct ioc_gq *parent = iocg->ancestors[iocg->level - 1];
+		struct ioc_gq *parent = iocg_parent(iocg);
 
 		parent->hweight_donating += iocg->hweight_donating;
 		parent->hweight_after_donation += iocg->hweight_after_donation;
 	}
 
 	list_for_each_entry_reverse(iocg, &inner_walk, walk_list) {
-		if (iocg->level > 0) {
-			struct ioc_gq *parent = iocg->ancestors[iocg->level - 1];
+		struct ioc_gq *parent = iocg_parent(iocg);
 
+		if (parent)
 			parent->hweight_donating += iocg->hweight_donating;
 			parent->hweight_after_donation += iocg->hweight_after_donation;
 		}
@@ -1944,9 +1960,9 @@ static void transfer_surpluses(struct list_head *surpluses, struct ioc_now *now)
 	 * roundups.
 	 */
 	list_for_each_entry(iocg, &inner_walk, walk_list) {
-		if (iocg->level) {
-			struct ioc_gq *parent = iocg->ancestors[iocg->level - 1];
+		struct ioc_gq *parent = iocg_parent(iocg);
 
+		if (parent) {
 			iocg->hweight_active = DIV64_U64_ROUND_UP(
 				(u64)parent->hweight_active * iocg->active,
 				parent->child_active_sum);
@@ -1995,15 +2011,14 @@ static void transfer_surpluses(struct list_head *surpluses, struct ioc_now *now)
 		u32 inuse, wpt, wptp;
 		u64 st, sf;
 
-		if (iocg->level == 0) {
+		parent = iocg_parent(iocg);
+		if (!parent) {
 			/* adjusted weight sum for 1st level: s' = s * b_pf / b'_pf */
 			iocg->child_adjusted_sum = DIV64_U64_ROUND_UP(
 				iocg->child_active_sum * (WEIGHT_ONE - iocg->hweight_donating),
 				WEIGHT_ONE - iocg->hweight_after_donation);
 			continue;
 		}
-
-		parent = iocg->ancestors[iocg->level - 1];
 
 		/* b' = gamma * b_f + b_t' */
 		iocg->hweight_inuse = DIV64_U64_ROUND_UP(
@@ -2035,7 +2050,7 @@ static void transfer_surpluses(struct list_head *surpluses, struct ioc_now *now)
 	 * we can finally determine leaf adjustments.
 	 */
 	list_for_each_entry(iocg, surpluses, surplus_list) {
-		struct ioc_gq *parent = iocg->ancestors[iocg->level - 1];
+		struct ioc_gq *parent = iocg_parent(iocg);
 		u32 inuse;
 
 		/*
