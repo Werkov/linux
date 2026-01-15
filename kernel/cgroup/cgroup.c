@@ -6421,13 +6421,10 @@ int __init cgroup_init(void)
 			WARN_ON(cgroup_add_dfl_cftypes(ss, ss->dfl_cftypes));
 			WARN_ON(cgroup_add_legacy_cftypes(ss, ss->legacy_cftypes));
 		}
+		init_css_set.subsys[ssid]->flags |= CSS_VISIBLE;
 
 		if (ss->bind)
 			ss->bind(init_css_set.subsys[ssid]);
-
-		cgroup_lock();
-		css_populate_dir(init_css_set.subsys[ssid]);
-		cgroup_unlock();
 	}
 
 	/* init_css_set.subsys[] has been updated, re-hash */
