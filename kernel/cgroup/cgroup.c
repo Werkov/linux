@@ -1759,6 +1759,7 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 	}
 
 	kernfs_remove_by_name(cgrp->kn, cgroup_file_name(cgrp, cft, name));
+	pr_info("%s(%s)\n", __func__, name);
 }
 
 /**
@@ -1774,6 +1775,11 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
 		return;
 
 	css->flags &= ~CSS_VISIBLE;
+
+	pr_info("%s(", __func__);
+	pr_cont_cgroup_path(css->cgroup);
+	pr_cont(")\n");
+
 
 	if (css_is_self(css)) {
 		if (cgroup_on_dfl(cgrp)) {
@@ -1806,6 +1812,10 @@ static int css_populate_dir(struct cgroup_subsys_state *css)
 
 	if (css->flags & CSS_VISIBLE)
 		return 0;
+
+	pr_info("%s(", __func__);
+	pr_cont_cgroup_path(css->cgroup);
+	pr_cont(")\n");
 
 	if (css_is_self(css)) {
 		if (cgroup_on_dfl(cgrp)) {
@@ -4415,6 +4425,7 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 				  current_fsuid(), current_fsgid(),
 				  0, cft->kf_ops, cft,
 				  NULL, key);
+	pr_info("%s(%s, css=%llx)\n", __func__, name, (u64)css);
 	if (IS_ERR(kn))
 		return PTR_ERR(kn);
 
@@ -4468,9 +4479,12 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 		if (is_add) {
 			ret = cgroup_add_file(css, cgrp, cft);
 			if (ret) {
+				char name[CGROUP_FILE_NAME_MAX];
+				cgroup_file_name(cgrp, cft, name);
 				pr_warn("%s: failed to add %s, err=%d\n",
 					__func__, cft->name, ret);
 				cft->flags |= __CFTYPE_ADDRM_END;
+				dump_stack();
 				break;
 			}
 		} else {
@@ -6419,6 +6433,8 @@ int __init cgroup_init(void)
 
 		if (ss->bind)
 			ss->bind(init_css_set.subsys[ssid]);
+
+		pr_info("%s : %s)\n", __func__, ss->name);
 	}
 
 	/* init_css_set.subsys[] has been updated, re-hash */
