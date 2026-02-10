@@ -1796,12 +1796,12 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
  * css_populate_dir - create subsys files in a cgroup directory
  * @css: target css
  *
- * On failure, no file is added.
+ * On failure, css_clear_dir must be called.
  */
 static int css_populate_dir(struct cgroup_subsys_state *css)
 {
 	struct cgroup *cgrp = css->cgroup;
-	struct cftype *cfts, *failed_cfts;
+	struct cftype *cfts;
 	int ret;
 
 	if (css->flags & CSS_VISIBLE)
@@ -1817,11 +1817,8 @@ static int css_populate_dir(struct cgroup_subsys_state *css)
 			if (cgroup_psi_enabled()) {
 				ret = cgroup_addrm_files(css, cgrp,
 							 cgroup_psi_files, true);
-				if (ret < 0) {
-					cgroup_addrm_files(css, cgrp,
-							   cgroup_base_files, false);
+				if (ret < 0)
 					return ret;
-				}
 			}
 		} else {
 			ret = cgroup_addrm_files(css, cgrp,
@@ -1832,23 +1829,14 @@ static int css_populate_dir(struct cgroup_subsys_state *css)
 	} else {
 		list_for_each_entry(cfts, &css->ss->cfts, node) {
 			ret = cgroup_addrm_files(css, cgrp, cfts, true);
-			if (ret < 0) {
-				failed_cfts = cfts;
-				goto err;
-			}
+			if (ret < 0)
+				return ret;
 		}
 	}
 
 	css->flags |= CSS_VISIBLE;
 
 	return 0;
-err:
-	list_for_each_entry(cfts, &css->ss->cfts, node) {
-		if (cfts == failed_cfts)
-			break;
-		cgroup_addrm_files(css, cgrp, cfts, false);
-	}
-	return ret;
 }
 
 int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
@@ -2246,6 +2234,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 exit_stats:
 	css_rstat_exit(&root_cgrp->self);
 destroy_root:
+	css_clear_dir(&root_cgrp->self);
 	kernfs_destroy_root(root->kf_root);
 	root->kf_root = NULL;
 exit_root_id:
@@ -4451,6 +4440,9 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
  *
  * Depending on @is_add, add or remove files defined by @cfts on @cgrp.
  * For removals, this function never fails.
+ * Failed additions must be undone by is_add=false calls, only when adding
+ * cftype's files (flag  __CFTYPE_ADDRM_END), otherwise not.
+ * XXX flag like is_cftype_add vs is_cgroup_add
  */
 static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 			      struct cgroup *cgrp, struct cftype cfts[],
@@ -4461,7 +4453,6 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 
 	lockdep_assert_held(&cgroup_mutex);
 
-restart:
 	for (cft = cfts; !(cft->flags & __CFTYPE_ADDRM_END) && cft->name[0] != '\0'; cft++) {
 		/* does cft->flags tell us to skip this file on @cgrp? */
 		if ((cft->flags & __CFTYPE_ONLY_ON_DFL) && !cgroup_on_dfl(cgrp))
@@ -4480,8 +4471,7 @@ restart:
 				pr_warn("%s: failed to add %s, err=%d\n",
 					__func__, cft->name, ret);
 				cft->flags |= __CFTYPE_ADDRM_END;
-				is_add = false;
-				goto restart;
+				break;
 			}
 		} else {
 			cgroup_rm_file(cgrp, cft);
