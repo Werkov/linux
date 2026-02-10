@@ -4491,19 +4491,20 @@ static int cgroup_apply_cftypes(struct cftype *cfts, bool is_add)
 {
 	struct cgroup_subsys *ss = cfts[0].ss;
 	struct cgroup *root = &ss->root->cgrp;
-	struct cgroup_subsys_state *css;
+	struct cgroup_subsys_state *d_css;
+	struct cgroup *dsct;
 	int ret = 0;
 
 	lockdep_assert_held(&cgroup_mutex);
 
 	/* add/rm files for all cgroups created before */
-	css_for_each_descendant_pre(css, cgroup_css(root, ss)) {
-		struct cgroup *cgrp = css->cgroup;
+	cgroup_for_each_live_descendant_pre(dsct, d_css, root) {
+		struct cgroup_subsys_state css = cgroup_css(dsct, ss);
 
-		if (!(css->flags & CSS_VISIBLE))
+		if (!(cgroup_ss_mask(dsct) & (1 << ss->id)) || !css_visible(css))
 			continue;
 
-		ret = cgroup_addrm_files(css, cgrp, cfts, is_add);
+		ret = cgroup_addrm_files(css, dsct, cfts, is_add);
 		if (ret)
 			break;
 	}
