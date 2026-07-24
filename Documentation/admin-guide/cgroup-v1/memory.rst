@@ -3,8 +3,10 @@ Memory Resource Controller
 ==========================
 
 .. caution::
-      This document is hopelessly outdated and it asks for a complete
-      rewrite. It still contains a useful information so we are keeping it
+      This document is hopelessly outdated, refer to
+      :ref:`Documentation/admin-guide/cgroup-v2.rst` <cgroup v2> for the v2
+      behavior.
+      It still contains a useful information so we are keeping it
       here but make sure to check the current code if you need a deeper
       understanding.
 
