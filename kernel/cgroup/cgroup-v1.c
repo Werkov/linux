@@ -86,7 +86,7 @@ int cgroup_attach_task_all(struct task_struct *from, struct task_struct *tsk)
 
 	return retval;
 }
-EXPORT_SYMBOL_GPL(cgroup_attach_task_all);
+EXPORT_SYMBOL_FOR_MODULES(cgroup_attach_task_all, "vhost");
 
 /**
  * cgroup_transfer_tasks - move tasks from one cgroup to another

@@ -7306,7 +7306,7 @@ out_kernfs:
 out:
 	return cgrp;
 }
-EXPORT_SYMBOL_GPL(cgroup_get_from_path);
+EXPORT_SYMBOL_FOR_MODULES(cgroup_get_from_path, "nft_socket,xt_cgroup");
 
 /**
  * cgroup_v1v2_get_from_fd - get a cgroup pointer from a fd
