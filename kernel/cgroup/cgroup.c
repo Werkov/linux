@@ -669,7 +669,6 @@ struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
 	else
 		return &cgrp->self;
 }
-EXPORT_SYMBOL_GPL(of_css);
 
 /**
  * for_each_css - iterate all css's of a cgroup
@@ -2497,7 +2496,6 @@ int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(cgroup_path_ns);
 
 /**
  * cgroup_attach_lock - Lock for ->attach()
@@ -6611,7 +6609,6 @@ struct cgroup *cgroup_get_from_id(u64 id)
 
 	return cgrp;
 }
-EXPORT_SYMBOL_GPL(cgroup_get_from_id);
 
 /*
  * proc_cgroup_show()
@@ -7344,7 +7341,6 @@ struct cgroup *cgroup_get_from_fd(int fd)
 	}
 	return cgrp;
 }
-EXPORT_SYMBOL_GPL(cgroup_get_from_fd);
 
 static u64 power_of_ten(int power)
 {
