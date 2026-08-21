@@ -43,7 +43,6 @@ void free_cgroup_ns(struct cgroup_namespace *ns)
 	/* Concurrent nstree traversal depends on a grace period. */
 	kfree_rcu(ns, ns.ns_rcu);
 }
-EXPORT_SYMBOL(free_cgroup_ns);
 
 struct cgroup_namespace *copy_cgroup_ns(u64 flags,
 					struct user_namespace *user_ns,
