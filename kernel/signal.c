@@ -2483,7 +2483,7 @@ static int ptrace_stop(int exit_code, int why, unsigned long message,
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
 		preempt_enable_no_resched();
 	schedule();
-	cgroup_leave_frozen(true);
+	cgroup_leave_frozen(false);
 
 	/*
 	 * We are back.  Now reacquire the siglock before touching
