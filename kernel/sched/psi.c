@@ -1568,7 +1568,7 @@ static int psi_cpu_open(struct inode *inode, struct file *file)
 static ssize_t psi_write(struct file *file, const char __user *user_buf,
 			 size_t nbytes, enum psi_res res)
 {
-	char buf[32];
+	char *buf;
 	size_t buf_size;
 	struct seq_file *seq;
 	struct psi_trigger *new;
@@ -1581,11 +1581,9 @@ static ssize_t psi_write(struct file *file, const char __user *user_buf,
 	if (!nbytes)
 		return -EINVAL;
 
-	buf_size = min(nbytes, sizeof(buf));
-	if (copy_from_user(buf, user_buf, buf_size))
-		return -EFAULT;
-
-	buf[buf_size - 1] = '\0';
+	buf = memdup_user_nul(user_buf, nbytes);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
 
 	seq = file->private_data;
 
