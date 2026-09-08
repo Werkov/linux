@@ -495,6 +495,22 @@ static int cgroup_pidlist_show(struct seq_file *s, void *v)
 	return 0;
 }
 
+static int cgroup1_procs_show(struct seq_file *s, void *v)
+{
+	pid_t pid;
+
+	/* Print PID both for `tasks` file (threads) and `cgroup.procs`
+	 * (processes), the latter iterates with CSS_TASK_ITER_PROCS hence we
+	 * get PIDs of thread group leaders, i.e. tgids.
+	 */
+	pid = task_pid_vnr(v);
+	if (!pid)
+		 return SEQ_SKIP;
+
+	seq_printf(s, "%d\n", pid);
+	return 0;
+}
+
 static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 				     char *buf, size_t nbytes, loff_t off,
 				     bool threadgroup)
@@ -632,11 +648,11 @@ static int cgroup_clone_children_write(struct cgroup_subsys_state *css,
 struct cftype cgroup1_base_files[] = {
 	{
 		.name = "cgroup.procs",
-		.seq_start = cgroup_pidlist_start,
-		.seq_next = cgroup_pidlist_next,
-		.seq_stop = cgroup_pidlist_stop,
-		.seq_show = cgroup_pidlist_show,
-		.private = CGROUP_FILE_PROCS,
+		.seq_start = cgroup_procs_start,
+		.seq_next = cgroup_procs_next,
+		.seq_show = cgroup1_procs_show,
+		.release = cgroup_procs_release,
+		.private = CGROUP_FILE_PROCS, /* see cgroup_v1_sorted() */
 		.write = cgroup1_procs_write,
 	},
 	{
@@ -651,11 +667,11 @@ struct cftype cgroup1_base_files[] = {
 	},
 	{
 		.name = "tasks",
-		.seq_start = cgroup_pidlist_start,
-		.seq_next = cgroup_pidlist_next,
-		.seq_stop = cgroup_pidlist_stop,
-		.seq_show = cgroup_pidlist_show,
-		.private = CGROUP_FILE_TASKS,
+		.seq_start = cgroup_threads_start,
+		.seq_next = cgroup_procs_next,
+		.seq_show = cgroup1_procs_show,
+		.release = cgroup_procs_release,
+		.private = CGROUP_FILE_TASKS, /* see cgroup_v1_sorted() */
 		.write = cgroup1_tasks_write,
 	},
 	{
@@ -1370,3 +1386,34 @@ static int __init cgroup_v1_proc(char *str)
 	return (kstrtobool(str, &proc_show_all) == 0);
 }
 __setup("cgroup_v1_proc=", cgroup_v1_proc);
+
+
+static int __init cgroup_v1_sorted(char *str)
+{
+	struct cftype *cft;
+	bool sorted;
+
+	if (kstrtobool(str, &sorted) < 0)
+		return 0;
+	if (!sorted)
+		return 1;
+
+	/*
+	 * cgroup_setup_root() for a v1 hierarchy requires an explicit mount,
+	 * so monkey patching from __setup is early enough.
+	 * cgroup_init_cftypes() doesn't work with seq_* /release callbacks at
+	 * all.
+	 */
+	for (cft = &cgroup1_base_files[0]; cft->name[0] != '\0'; cft++) {
+		if (cft->private == CGROUP_FILE_PROCS ||
+		    cft->private == CGROUP_FILE_TASKS) {
+			cft->seq_start = cgroup_pidlist_start;
+			cft->seq_next = cgroup_pidlist_next;
+			cft->seq_stop = cgroup_pidlist_stop;
+			cft->seq_show = cgroup_pidlist_show;
+			cft->release = NULL;
+		}
+	}
+	return 1;
+}
+__setup("cgroup_v1_sorted=", cgroup_v1_sorted);

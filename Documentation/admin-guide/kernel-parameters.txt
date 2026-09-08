@@ -758,6 +758,12 @@ Kernel parameters
 			semi-legacy software can check this file to decide
 			about usage of v2 (sic) controllers.
 
+	cgroup_v1_sorted= [KNL] Sort PIDs in cgroup.procs and tasks
+			Format: { "true" | "false" }
+			cgroup.procs and tasks are not sorted by default.
+			This compatibility option enables sorting v1 outputs in
+			case legacy software depends on (formerly) sorted PIDs.
+
 	cgroup_favordynmods= [KNL] Enable or Disable favordynmods.
 			Format: { "true" | "false" }
 			Defaults to the value of CONFIG_CGROUP_FAVOR_DYNMODS.
