@@ -979,6 +979,7 @@ struct btqca_data {
 };
 
 #define BTUSB_MAX_ISOC_FRAMES	10
+#define BTUSB_MAX_ISOC_TX_URBS	32
 
 #define BTUSB_INTR_RUNNING	0
 #define BTUSB_BULK_RUNNING	1
@@ -1022,6 +1023,7 @@ struct btusb_data {
 	struct usb_anchor deferred;
 	struct usb_anchor tx_anchor;
 	int tx_in_flight;
+	atomic_t isoc_tx_in_flight;
 	spinlock_t txlock;
 
 	struct usb_anchor intr_anchor;
@@ -2018,9 +2020,12 @@ static void btusb_isoc_tx_complete(struct urb *urb)
 {
 	struct sk_buff *skb = urb->context;
 	struct hci_dev *hdev = (struct hci_dev *)skb->dev;
+	struct btusb_data *data = hci_get_drvdata(hdev);
 
 	BT_DBG("%s urb %p status %d count %d", hdev->name, urb, urb->status,
 	       urb->actual_length);
+
+	atomic_dec(&data->isoc_tx_in_flight);
 
 	if (!test_bit(HCI_RUNNING, &hdev->flags))
 		goto done;
@@ -2302,18 +2307,37 @@ static int submit_or_queue_tx_urb(struct hci_dev *hdev, struct urb *urb)
 
 static int btusb_send_sco(struct hci_dev *hdev, struct sk_buff *skb)
 {
+	struct btusb_data *data = hci_get_drvdata(hdev);
 	struct urb *urb;
+	int err;
 
 	if (!hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
 	    hci_conn_num(hdev, SCO_LINK) < 1)
 		return -ENODEV;
+
+	/* SCO over USB is not flow controlled and the HCI core orphans the
+	 * skb, so nothing throttles a sender that is faster than the isoc
+	 * endpoint. Drop the frame rather than queueing URBs without bound,
+	 * a long queue makes usb_hcd_flush_endpoint() spin with IRQs off.
+	 */
+	if (atomic_read(&data->isoc_tx_in_flight) >= BTUSB_MAX_ISOC_TX_URBS) {
+		bt_dev_warn_ratelimited(hdev, "SCO TX queue full, dropping frame");
+		hdev->stat.err_tx++;
+		kfree_skb(skb);
+		return 0;
+	}
 
 	urb = alloc_isoc_urb(hdev, skb);
 	if (IS_ERR(urb))
 		return PTR_ERR(urb);
 
 	hdev->stat.sco_tx++;
-	return submit_tx_urb(hdev, urb);
+	err = submit_tx_urb(hdev, urb);
+	/* May race with completion, briefly going negative is harmless */
+	if (!err)
+		atomic_inc(&data->isoc_tx_in_flight);
+
+	return err;
 }
 
 static int btusb_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
