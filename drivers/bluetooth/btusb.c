@@ -2300,6 +2300,22 @@ static int submit_or_queue_tx_urb(struct hci_dev *hdev, struct urb *urb)
 	return 0;
 }
 
+static int btusb_send_sco(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	struct urb *urb;
+
+	if (!hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
+	    hci_conn_num(hdev, SCO_LINK) < 1)
+		return -ENODEV;
+
+	urb = alloc_isoc_urb(hdev, skb);
+	if (IS_ERR(urb))
+		return PTR_ERR(urb);
+
+	hdev->stat.sco_tx++;
+	return submit_tx_urb(hdev, urb);
+}
+
 static int btusb_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct urb *urb;
@@ -2324,16 +2340,7 @@ static int btusb_send_frame(struct hci_dev *hdev, struct sk_buff *skb)
 		return submit_or_queue_tx_urb(hdev, urb);
 
 	case HCI_SCODATA_PKT:
-		if (!hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
-		    hci_conn_num(hdev, SCO_LINK) < 1)
-			return -ENODEV;
-
-		urb = alloc_isoc_urb(hdev, skb);
-		if (IS_ERR(urb))
-			return PTR_ERR(urb);
-
-		hdev->stat.sco_tx++;
-		return submit_tx_urb(hdev, urb);
+		return btusb_send_sco(hdev, skb);
 
 	case HCI_ISODATA_PKT:
 		urb = alloc_bulk_urb(hdev, skb);
@@ -2805,16 +2812,7 @@ static int btusb_send_frame_intel(struct hci_dev *hdev, struct sk_buff *skb)
 		return submit_or_queue_tx_urb(hdev, urb);
 
 	case HCI_SCODATA_PKT:
-		if (!hci_dev_test_flag(hdev, HCI_USER_CHANNEL) &&
-		    hci_conn_num(hdev, SCO_LINK) < 1)
-			return -ENODEV;
-
-		urb = alloc_isoc_urb(hdev, skb);
-		if (IS_ERR(urb))
-			return PTR_ERR(urb);
-
-		hdev->stat.sco_tx++;
-		return submit_tx_urb(hdev, urb);
+		return btusb_send_sco(hdev, skb);
 
 	case HCI_ISODATA_PKT:
 		urb = alloc_bulk_urb(hdev, skb);
